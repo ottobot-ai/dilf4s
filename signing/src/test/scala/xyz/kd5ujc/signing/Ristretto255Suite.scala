@@ -13,6 +13,44 @@ object Ristretto255Suite extends SimpleIOSuite {
   private val scheme = new Ristretto255
 
   // ========================================================================
+  // FROST(ristretto255, SHA-512) test vectors from draft-irtf-cfrg-frost-15
+  // ========================================================================
+
+  test("FROST test vector: aggregate signature verifies") {
+    IO {
+      // From draft-irtf-cfrg-frost-15, section F.1 (FROST(ristretto255, SHA-512))
+      val groupPublicKey = hex.parseHex("e2a62f39eede11269e3bd5a7d97554f5ca384f9f6d3dd9c3c0d05083c7254f57")
+      val message = hex.parseHex("74657374") // "test"
+      val signature = hex.parseHex(
+        "fc45655fbc66bbffad654ea4ce5fdae253a49a64ace25d9adb62010dd9fb2555" +
+          "2164141787162e5b4cab915b4aa45d94655dbb9ed7c378a53b980a0be220a802"
+      )
+
+      val pk = Ristretto255.PublicKey(groupPublicKey)
+      expect(scheme.verify(signature, message, pk))
+    }
+  }
+
+  test("FROST test vector: single-signer sign then verify with group_secret_key") {
+    IO {
+      // group_secret_key from draft-irtf-cfrg-frost-15 section F.1
+      val groupSecretKey = hex.parseHex("1b25a55e463cfd15cf14a5d3acc3d15053f08da49c8afcf3ab265f2ebc4f970b")
+      val sk = Ristretto255.SecretKey(groupSecretKey)
+      val pk = scheme.getVerificationKey(sk)
+
+      // Verify the derived public key matches the test vector
+      val expectedPk = hex.parseHex("e2a62f39eede11269e3bd5a7d97554f5ca384f9f6d3dd9c3c0d05083c7254f57")
+      expect(java.util.Arrays.equals(pk.bytes, expectedPk)) &&
+      // Sign a message and verify it round-trips
+      {
+        val message = "test".getBytes("UTF-8")
+        val sig = scheme.sign(sk, message)
+        expect(scheme.verify(sig, message, pk))
+      }
+    }
+  }
+
+  // ========================================================================
   // Property-based tests (self-consistency)
   // ========================================================================
 
@@ -91,14 +129,18 @@ object Ristretto255Suite extends SimpleIOSuite {
     }
   }
 
-  test("deterministic signatures — same seed and message produce same signature") {
+  test("signatures are randomized (hedged nonces)") {
     IO {
       val seed = randomBytes(32)
       val kp = scheme.deriveKeyPairFromSeed(seed)
-      val msg = "determinism test".getBytes("UTF-8")
+      val msg = "nonce test".getBytes("UTF-8")
       val sig1 = scheme.sign(kp.signingKey, msg)
       val sig2 = scheme.sign(kp.signingKey, msg)
-      expect(java.util.Arrays.equals(sig1, sig2))
+      // Different signatures for same message (randomized nonces)
+      expect(!java.util.Arrays.equals(sig1, sig2)) &&
+      // But both verify
+      expect(scheme.verify(sig1, msg, kp.verificationKey)) &&
+      expect(scheme.verify(sig2, msg, kp.verificationKey))
     }
   }
 
@@ -144,7 +186,7 @@ object Ristretto255Suite extends SimpleIOSuite {
       val results = (0 until 100).map { _ =>
         val seed = randomBytes(32)
         val sk = scheme.deriveSecretKeyFromSeed(seed)
-        val scalar = sk.scalar
+        val scalar = sk.bytes
 
         // Ed25519 clamping sets scalar[0] & 0xf8 and scalar[31] & 0x7f | 0x40
         // Ristretto does NOT do this — scalar is just reduced mod L
