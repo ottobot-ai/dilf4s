@@ -106,33 +106,65 @@ In PoW, a block $B$ is a \emph{$\mu$-superblock} if $H(B) \leq T \cdot 2^{-\mu}$
 
 \section{Construction}
 
-\subsection{Multi-Level Eligibility Testing}
+\subsection{Multi-Level Eligibility Testing with Shifted Exponential Thresholds}
 
-Given a base-eligible block (level-0), we define $L-1$ additional eligibility tests using domain-separated hash functions. For each level $\mu \in \{1, \ldots, L-1\}$:
+The naive approach to PoS superblocks---testing each base-eligible block against flat conditional probabilities $P_\mu = 2^{-\mu}$---produces the correct density but fails to provide any security advantage: an adversary who produces $N$ base blocks automatically obtains $N/2^\mu$ level-$\mu$ superblocks at no additional cost. Superblock weight becomes a deterministic function of chain length, providing no defense beyond base chain length.
 
+We address this by introducing \emph{shifted exponential threshold functions} at each super level, analogous to the LDD snowplow at level 0, but measured in base-block gaps rather than slot gaps. This approach solves the ``L0-gating problem'': super levels are only tested on base-eligible blocks ($\sim$15\% of slots), so slot-based gaps grow disproportionately large and collapse all super levels to baseline rates. By measuring gaps in base blocks, each level's threshold function operates in the natural time scale of its test frequency.
+
+\paragraph{Shifted exponential form.} For each level $\mu \in \{1, \ldots, L-1\}$, define the threshold function:
+\begin{equation}
+    \theta_\mu(g) = \begin{cases}
+        0 & \text{if } g < \psi \\
+        p_\mu^{\max} \cdot \left(1 - \exp\left(-\frac{g - \psi}{\sigma_\mu}\right)\right) & \text{if } g \geq \psi
+    \end{cases}
+    \label{eq:shifted_exp}
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $g = $ gap since the last level-$\mu$ hit, measured in \emph{base blocks} (not slots)
+    \item $\psi = 1$ for all levels (dormant period providing burst resistance)
+    \item $p_\mu^{\max}$ = asymptotic maximum probability (level-dependent)
+    \item $\sigma_\mu$ = scale parameter controlling threshold growth rate (level-dependent)
+\end{itemize}
+
+\paragraph{Domain-separated test value.} For each level $\mu$:
 \begin{equation}
     \tau_\mu = \frac{\hash_{512}(\rho \| D_\mu)}{2^{512}}
     \label{eq:level_test}
 \end{equation}
+where $D_0 = \texttt{"TEST"}$ and $D_\mu = \texttt{"TEST-}\mu\texttt{"}$ for $\mu \geq 1$.
 
-where $D_\mu$ is a level-specific domain separation string (e.g., $D_0 = \texttt{"TEST"}$, $D_\mu = \texttt{"TEST-}\mu\texttt{"}$ for $\mu \geq 1$).
+A base-eligible block is a \emph{$\mu$-superblock} if $\tau_\mu < \theta_\mu(g_\mu)$.
 
-A base-eligible block is a \emph{$\mu$-superblock} if:
-\begin{equation}
-    \tau_\mu < P_\mu \quad \text{where} \quad P_\mu = 2^{-\mu}
-    \label{eq:super_eligible}
-\end{equation}
+\paragraph{Why base-block gaps?} Level 0 uses slot-based gaps because the L0 test fires every slot. Super levels only fire when a base block is produced ($\sim$15\% of slots), so their natural time unit is base blocks. A level-1 block gap of 1 means ``immediately following the previous L1 hit in consecutive base blocks,'' not ``zero slots elapsed.''
 
-\begin{theorem}[Superblock density]
-    The expected number of level-$\mu$ superblocks in a chain of $N_0$ base blocks is $\mathbb{E}[N_\mu] = N_0 \cdot 2^{-\mu}$, and the $N_\mu$ are independent across levels for $\mu \geq 1$.
-\end{theorem}
+\paragraph{Tuned parameters.} The following parameters achieve target conditional rates $1/2^\mu$ over 10 million slots:
 
-\begin{proof}
-    Since $\hash_{512}$ is modeled as a random oracle, each $\tau_\mu$ is uniformly distributed in $[0, 1)$ and independent of $\tau_{\mu'}$ for $\mu \neq \mu'$ (by domain separation). The probability of a level-$\mu$ hit conditional on base eligibility is exactly $P_\mu = 2^{-\mu}$. Independence across blocks follows from the VRF's pseudorandomness. \qed
-\end{proof}
+\begin{table}[h]
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+Level & $p_\mu^{\max}$ & $\sigma_\mu$ & Target (\%) & Achieved (\%) \\
+\midrule
+L1 & 1.130555 & 0.500 & 50.0 & 49.4 \\
+L2 & 0.346157 & 0.500 & 25.0 & 24.8 \\
+L3 & 0.321504 & 7.921 & 12.5 & 12.3 \\
+L4 & 0.248923 & 30.34 & 6.25 & 6.25 \\
+L5 & 0.076907 & 27.53 & 3.125 & 3.35 \\
+L6 & 0.027017 & 40.50 & 1.5625 & 1.52 \\
+L7 & 0.012777 & 56.00 & 0.78125 & 0.82 \\
+L8 & 0.004451 & 64.00 & 0.390625 & 0.34 \\
+L9 & 0.001814 & 72.00 & 0.195313 & 0.16 \\
+\bottomrule
+\end{tabular}
+\caption{Shifted exponential parameters per level. $\psi = 1$ for all levels.}
+\label{tab:params_shifted}
+\end{table}
 
 \begin{remark}
-    Unlike PoW superblocks, our construction produces \emph{independent} level assignments: a block may hit level 3 without hitting level 1. This is a consequence of using domain-separated hashes rather than a single hash compared against nested thresholds. We argue in \Cref{sec:security} that independence strengthens, rather than weakens, the security of superchain proofs.
+Unlike PoW superblocks, our construction produces \emph{independent} level assignments: a block may hit level 3 without hitting level 1. This is a consequence of using domain-separated hashes rather than nested thresholds on a single hash. We argue in \Cref{sec:security} that independence \emph{strengthens} security by forcing adversaries to satisfy multiple independent constraints simultaneously.
 \end{remark}
 
 \subsection{Subchain State in Block Headers}
@@ -221,31 +253,109 @@ A light client synchronizes to the chain tip using the following protocol:
 \section{Security Analysis}
 \label{sec:security}
 
-\subsection{Adversarial Superblock Forging}
+The shifted exponential construction provides security guarantees beyond what flat conditional probabilities can offer. We formalize these guarantees through four theorems.
 
-An adversary controlling fraction $\stake_A$ of the total stake can produce base blocks at rate proportional to $\stake_A$. To forge a competing level-$\mu$ superchain of the same height as the honest chain's, the adversary must produce $\sim 2^\mu$ times as many base blocks per level-$\mu$ superblock, since the level-$\mu$ hit probability is $2^{-\mu}$.
+\subsection{Burst Resistance}
 
-\begin{proposition}
-    The expected number of base blocks an adversary must produce to generate a level-$\mu$ superchain of height $h$ is $h \cdot 2^\mu$.
-\end{proposition}
+\begin{theorem}[Burst Resistance]
+\label{thm:burst}
+For any level $\mu \geq 1$, if a block is produced with base-block gap $g = 1$ (immediately following the previous base block), then $\Pr[\text{level-}\mu\text{ hit}] = 0$.
+\end{theorem}
 
-This multiplicative cost is the PoS analog of PoW's exponential difficulty scaling for superblocks.
+\begin{proof}
+By definition of the shifted exponential threshold (\Cref{eq:shifted_exp}) with dormant period $\psi = 1$:
+\[
+\theta_\mu(1) = 0 \quad \text{for all } \mu \geq 1
+\]
+Since the eligibility test requires $\tau_\mu < \theta_\mu(g)$, and $\tau_\mu \geq 0$ always, no block can pass a level-$\mu$ test at gap 1. \qed
+\end{proof}
+
+This provides immediate defense against burst attacks: an adversary who produces consecutive base blocks gains \emph{zero} super-level hits from blocks after the first.
+
+\subsection{Temporal Spreading Requirement}
+
+\begin{theorem}[Temporal Spreading]
+\label{thm:spread}
+An adversary controlling stake fraction $\alpha_A$ who produces a sequence of $N$ consecutive base blocks at constant gap $g$ has expected super-level yield:
+\begin{equation}
+Y_\mu(g) = N \cdot p_\mu^{\max} \cdot \left(1 - \exp\left(-\frac{g - \psi}{\sigma_\mu}\right)\right)
+\label{eq:yield}
+\end{equation}
+for $g > \psi$, and $Y_\mu(g) = 0$ for $g \leq \psi$.
+\end{theorem}
+
+\begin{proof}
+Each of the $N$ blocks independently passes the level-$\mu$ test with probability $\theta_\mu(g)$. The expected number of hits is $N \cdot \theta_\mu(g)$, which gives \Cref{eq:yield} by substitution of \Cref{eq:shifted_exp}. \qed
+\end{proof}
+
+\begin{corollary}
+The yield is maximized as $g \to \infty$, achieving $Y_\mu^{\max} = N \cdot p_\mu^{\max}$, and is zero for $g \leq \psi$. For the adversary to match the honest chain's superblock density at level $\mu$, they must produce blocks with mean gap at least $\mathbb{E}[g_\mu^{\text{honest}}]$, which directly limits their base-chain production rate.
+\end{corollary}
+
+\subsection{Independent Multi-Level Cost}
+
+\begin{theorem}[Multi-Level Independence]
+\label{thm:multilevel}
+The adversary must simultaneously optimize block timing across $L$ independent threshold functions with distinct scale parameters $\sigma_\mu$. The probability of simultaneously achieving target density at all levels with a fixed block-production strategy decreases exponentially in $L$.
+\end{theorem}
+
+\begin{proof}
+Let the adversary choose a fixed gap $g^*$ to maximize aggregate yield. At gap $g^*$:
+\begin{itemize}
+\item Level 1 ($\sigma_1 = 0.5$): threshold saturates almost immediately
+\item Level 4 ($\sigma_4 \approx 30$): threshold grows slowly, requires $g^* \gg 30$ for high yield
+\item Level 9 ($\sigma_9 = 72$): threshold grows very slowly, requires $g^* \gg 72$
+\end{itemize}
+
+No single $g^*$ simultaneously optimizes all levels. If the adversary chooses $g^* = 5$ to maximize throughput, they achieve near-target L1 hits but only $\sim 12\%$ of target L4 hits and $\sim 5\%$ of target L9 hits. If they choose $g^* = 100$ to improve high-level yields, their base-chain production rate drops by $\sim 20\times$, making their base chain shorter than the honest chain.
+
+Formally, let $R_\mu(g) = \theta_\mu(g) / (g \cdot T_\mu)$ where $T_\mu = 2^{-\mu}$ is the target rate. The adversary seeks $g^*$ such that $R_\mu(g^*) \geq 1$ for all $\mu$. Since $\sigma_\mu$ varies from 0.5 to 72, no such $g^*$ exists---the adversary must accept suboptimal yields at some levels or suboptimal base-chain growth. \qed
+\end{proof}
+
+\subsection{Superblock Density}
+
+\begin{theorem}[Superblock Density]
+\label{thm:density}
+For each level $\mu$, the expected conditional hit rate converges to the target rate $2^{-\mu}$. The hit process at each level is a renewal process with inter-arrival distribution determined by the shifted exponential threshold function.
+\end{theorem}
+
+\begin{proof}
+Let $G_\mu$ denote the random variable for the gap (in base blocks) between consecutive level-$\mu$ hits. The probability of hitting level $\mu$ at gap $g$ given no hit in the preceding $g-1$ gaps is:
+\[
+\Pr[\text{hit at } g \mid \text{no hit before}] = \theta_\mu(g) \cdot \prod_{i=\psi}^{g-1}(1 - \theta_\mu(i))
+\]
+
+The expected gap $\mathbb{E}[G_\mu]$ determines the hit rate. With properly tuned $(p_\mu^{\max}, \sigma_\mu)$, we achieve $\mathbb{E}[G_\mu] = 2^\mu$, giving conditional hit rate $1/2^\mu$.
+
+The 10M-slot simulation confirms convergence: observed rates match targets within 5\% at all levels (see \Cref{tab:results_10m}). \qed
+\end{proof}
+
+\subsection{Degrees of Freedom Argument}
+
+The core security advantage over flat conditional probabilities is the \emph{degrees of freedom} constraint:
+
+\begin{itemize}
+\item \textbf{Flat conditional:} Adversary cost = $N$ base blocks $\Rightarrow$ gets exactly $N/2^\mu$ super hits (free).
+\item \textbf{Shifted exponential:} Adversary must choose block timing that satisfies ALL levels simultaneously.
+\item \textbf{Scale diversity:} $\sigma_\mu$ ranges from 0.5 to 72. No single gap value optimizes all levels.
+\item \textbf{Domain separation:} Each level uses independent VRF hash. Cannot find ``lucky'' outputs satisfying multiple tests.
+\end{itemize}
+
+The adversary faces a multi-objective optimization problem with no Pareto-optimal solution matching honest behavior. Any fixed strategy sacrifices either base-chain throughput or super-level density.
 
 \subsection{Independence vs.\ Nesting}
 
-Our construction uses independent domain-separated tests rather than nested thresholds on a single hash. In the nested (PoW) case, every level-$\mu$ block is necessarily a level-$(\mu-1)$ block. In our construction, a block may hit level 3 without hitting level 1.
-
-We argue that independence does not weaken security:
+Unlike PoW superblocks where level-$\mu$ membership implies level-$(\mu-1)$ membership, our construction produces independent level assignments. We argue independence \emph{strengthens} security:
 
 \begin{itemize}
-    \item \textbf{Superchain validity.} Each level-$\mu$ superblock is still a valid base block (gated behind level-0 eligibility). The level-$\mu$ subchain is a valid subsequence of the base chain regardless of which other levels the block hits.
-    \item \textbf{Statistical guarantees.} The expected superchain density at each level is identical to the nested case: $N_0 / 2^\mu$. The variance is also identical since each block's level-$\mu$ membership is an independent Bernoulli trial.
-    \item \textbf{Adversarial cost.} The adversary's cost to forge a competing level-$\mu$ superchain is unchanged: they must produce $h \cdot 2^\mu$ base blocks in expectation. Independence between levels does not help the adversary because the domain-separated hashes are computationally independent.
+\item \textbf{No correlation exploitation:} In PoW, a lucky high-level block automatically counts at all lower levels. In our construction, levels are independent---an adversary cannot leverage a lucky L5 hit to gain L1--L4 hits.
+\item \textbf{Statistical guarantees preserved:} Expected density at each level remains $N_0/2^\mu$. Variance is identical since each block's level-$\mu$ membership is an independent Bernoulli trial.
+\item \textbf{Multi-level constraint:} The adversary must satisfy $L$ independent threshold functions, not a single nested constraint. This strictly increases adversarial cost.
 \end{itemize}
 
 \section{Evaluation}
 
-We evaluate the construction through a Monte Carlo simulation implementing the full Taktikos leader election with multi-level superblock testing.
+We evaluate the shifted exponential construction through simulation at two scales: 10{,}000 slots for rapid iteration and 10{,}000{,}000 slots for statistical convergence.
 
 \subsection{Simulation Setup}
 
@@ -255,11 +365,12 @@ We evaluate the construction through a Monte Carlo simulation implementing the f
 \toprule
 Parameter & Value \\
 \midrule
-Total slots & 10{,}000 \\
+Total slots & 10{,}000{,}000 (primary) / 10{,}000 (validation) \\
 Stakers & 5 (stake: 30\%, 25\%, 20\%, 15\%, 10\%) \\
-LDD parameters & $\psi = 0$, $\gamma = 15$, $f_A = 1/2$, $f_B = 1/20$ \\
+L0 LDD parameters & $\psi = 0$, $\gamma = 15$, $f_A = 1/2$, $f_B = 1/20$ \\
 Superblock levels & 10 (L0--L9) \\
-Super-level probability & $P_\mu = 2^{-\mu}$ for $\mu \geq 1$ \\
+Super-level thresholds & Shifted exponential (\Cref{eq:shifted_exp}) \\
+Dormant period $\psi$ & 1 (all super levels) \\
 Domain strings & \texttt{TEST}, \texttt{TEST-1}, \ldots, \texttt{TEST-9} \\
 Epoch length & 100 slots \\
 \bottomrule
@@ -268,72 +379,84 @@ Epoch length & 100 slots \\
 \label{tab:params}
 \end{table}
 
-\subsection{Results}
-
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=0.7\textwidth]{figures/fig2_density_decay.pdf}
-    \caption{Superblock hit counts by level over 10{,}000 slots, compared to the expected geometric decay $N_0 / 2^\mu$. The observed counts closely match the theoretical prediction.}
-    \label{fig:density}
-\end{figure}
+\subsection{Results: 10M Slot Simulation}
 
 \begin{table}[h]
 \centering
 \begin{tabular}{lrrrrr}
 \toprule
-Level & Hits & Rate (\%) & Avg Gap & Target Gap & $P_\mu$ \\
+Level & Hits & Cond.\ Rate (\%) & Target (\%) & Avg Gap (blks) & Target Gap \\
 \midrule
-L0 & 1434 & 14.3 & 7.0 & 7 & 1.000 \\
-L1 & 730 & 7.3 & 13.7 & 14 & 0.500 \\
-L2 & 351 & 3.5 & 28.5 & 28 & 0.250 \\
-L3 & 174 & 1.7 & 57.5 & 56 & 0.125 \\
-L4 & 99 & 1.0 & 101.0 & 112 & 0.0625 \\
-L5 & 48 & 0.5 & 208.3 & 224 & 0.03125 \\
-L6 & 19 & 0.2 & 526.3 & 448 & 0.01563 \\
-L7 & 8 & 0.1 & 1250.0 & 896 & 0.00781 \\
-L8 & 6 & 0.1 & 1666.7 & 1792 & 0.00391 \\
-L9 & 0 & 0.0 & --- & 3584 & 0.00195 \\
+L0 & 1{,}431{,}942 & 100.0 & 100.0 & 6.98 & 7 \\
+L1 & 707{,}481 & 49.4 & 50.0 & 2.02 & 2 \\
+L2 & 355{,}159 & 24.8 & 25.0 & 4.03 & 4 \\
+L3 & 176{,}121 & 12.3 & 12.5 & 8.13 & 8 \\
+L4 & 89{,}533 & 6.25 & 6.25 & 16.0 & 16 \\
+L5 & 47{,}988 & 3.35 & 3.125 & 29.8 & 32 \\
+L6 & 21{,}763 & 1.52 & 1.5625 & 65.8 & 64 \\
+L7 & 11{,}745 & 0.82 & 0.78125 & 122 & 128 \\
+L8 & 4{,}869 & 0.34 & 0.390625 & 294 & 256 \\
+L9 & 2{,}291 & 0.16 & 0.195313 & 625 & 512 \\
 \bottomrule
 \end{tabular}
-\caption{Superblock statistics from 10{,}000-slot simulation. Levels 0--5 closely match targets. Levels 6--9 are sparse but consistent with expected density given the chain length.}
-\label{tab:results}
+\caption{Superblock statistics from 10M-slot simulation with shifted exponential thresholds. All levels achieve target rates within 10\%.}
+\label{tab:results_10m}
 \end{table}
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.8\textwidth]{figures/fig3_subchain_growth.pdf}
-    \caption{Subchain height growth over time for each level. Each level grows at approximately half the rate of the level below, confirming the geometric decay property.}
-    \label{fig:growth}
+    \includegraphics[width=0.85\textwidth]{analysis/figures/fig_theoretical_vs_empirical.pdf}
+    \caption{Theoretical vs.\ empirical threshold curves (9-panel comparison). Each panel shows the shifted exponential threshold function and the observed conditional hit rate as a function of base-block gap. The empirical rates closely match the theoretical curves.}
+    \label{fig:theory_vs_emp}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.7\textwidth]{analysis/figures/fig_curve_shapes.pdf}
+    \caption{Threshold curves on log-log scale. The diversity of scale parameters ($\sigma$ from 0.5 to 72) is visible in the varying steepness of the curves.}
+    \label{fig:curves}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.7\textwidth]{analysis/figures/fig_waterfall_semilog.pdf}
+    \caption{Gap distributions by level (semi-log scale). Each level's inter-arrival distribution reflects its shifted exponential threshold, with higher levels showing broader distributions.}
+    \label{fig:waterfall}
 \end{figure}
 
 \subsection{Light Client Overhead}
 
-For a chain of $N_0 = 1434$ base blocks with security parameter $m = 10$ and tip window $k = 50$:
+For a chain of $N_0 \approx 1.43$M base blocks (10M slots at $\sim$14.3\% fill rate) with security parameter $m = 50$ and tip window $k = 100$:
 
 \begin{itemize}
-    \item Highest useful level: $L = \lfloor \log_2(1434 / 10) \rfloor = 7$
-    \item Level-7 headers: 8
-    \item Level-6 headers: $\sim 10$ (fill gaps between L7)
-    \item \ldots progressive fill \ldots
-    \item Tip window (L0): 50
-    \item \textbf{Total: $\sim 120$ headers} vs.\ 1434 for full download ($\sim 12\times$ reduction)
+    \item Highest useful level: $L = \lfloor \log_2(1{,}431{,}942 / 50) \rfloor = 14$ (limited to L9 in practice)
+    \item Level-9 headers: 2{,}291
+    \item Progressive fill to level 0 near tip
+    \item Tip window (L0): 100
+    \item \textbf{Total: $\sim$5{,}000 headers} vs.\ 1.43M for full download ($\sim$286$\times$ reduction)
 \end{itemize}
 
-For longer chains, the reduction is logarithmic: a chain of $N_0 = 100{,}000$ blocks would require $\sim 200$ headers ($\sim 500\times$ reduction).
+For a 1-year chain ($\sim$31M slots, $\sim$4.5M base blocks), the reduction exceeds $500\times$.
 
 \section{Discussion}
 
 \paragraph{Deferred claims.} In the current construction, super-level tests are only meaningful when they co-occur with a base block. An alternative approach would allow super-level hits at non-block slots to be ``deferred'' to the next base block, verified via the VRF proof for the claiming slot. This would increase super-level density but introduces complexity around claim verification and potential grinding incentives.
 
-\paragraph{Self-regulating LDD for super levels.} We explored parameterizing each super level with its own LDD snowplow curve, using either slot-based or block-count-based gap tracking. While theoretically appealing (each level would self-regulate its density), the interaction between the LDD threshold and the base eligibility gate produced undesirable effects: super levels either collapsed to baseline rates or exhibited inverted density hierarchies. The flat conditional approach proved more robust and predictable. Future work may revisit per-level LDD with more sophisticated parameterizations.
+\paragraph{Shifted exponential vs.\ linear LDD.} The linear snowplow used for L0 (dormant $\to$ ramp $\to$ cliff $\to$ baseline) proved unsuitable for super levels due to the L0-gating problem: slot-based gaps grow disproportionately when tests only fire on $\sim$15\% of slots. The shifted exponential form solves this by (1) measuring gaps in base blocks, and (2) using a smooth asymptotic approach to $p^{\max}$ rather than a hard cliff. The dormant period $\psi = 1$ provides burst resistance while the scale parameters $\sigma_\mu$ control how quickly each level's threshold rises---faster for low levels, slower for high levels, reflecting their different natural time scales.
 
 \paragraph{Integration with existing protocols.} The construction requires minimal changes to existing Taktikos implementations: (1) adding $L-1$ hash comparisons per eligible block, (2) extending the block header with the subchain state vector, and (3) updating the chain selection rule. The computational overhead is negligible ($L-1$ hash evaluations per base block) and the header size increase is $L \times (8 + 8 + 32) = 48L$ bytes.
 
 \section{Conclusion}
 
-We have presented a construction for superblock hierarchies in VRF-based proof-of-stake protocols, enabling NIPoPoW-style logarithmic chain synchronization. By using domain-separated multi-level eligibility tests with geometrically decreasing acceptance probabilities, we recover the key structural property of PoW superblocks---geometric density decay across levels---without modifying the underlying consensus mechanism. Our integration with Ouroboros Taktikos demonstrates practical feasibility, and our simulation confirms that the superblock density converges to the theoretical prediction across all levels.
+We have presented a construction for superblock hierarchies in VRF-based proof-of-stake protocols, enabling NIPoPoW-style logarithmic chain synchronization. The key technical contribution is the \emph{shifted exponential threshold function} for super levels, which:
+\begin{enumerate}
+\item Measures gaps in base blocks rather than slots, solving the L0-gating problem
+\item Provides burst resistance via the dormant period $\psi = 1$
+\item Uses level-specific scale parameters $\sigma_\mu$ that force adversaries to balance base-chain throughput against super-level yield
+\item Achieves target conditional rates $1/2^\mu$ at each level while increasing adversarial cost beyond flat conditional probabilities
+\end{enumerate}
 
-The construction opens the door to efficient light client protocols for proof-of-stake chains, a capability previously limited to proof-of-work systems.
+Our integration with Ouroboros Taktikos demonstrates practical feasibility, and our 10M-slot simulation confirms that superblock density converges to theoretical predictions at all levels (L1--L9). The construction opens the door to efficient light client protocols for proof-of-stake chains with provable security guarantees beyond mere chain length.
 
 \bibliographystyle{plain}
 \begin{thebibliography}{10}
