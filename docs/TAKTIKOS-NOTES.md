@@ -210,26 +210,55 @@ This gives L4 the snowplow's self-regulating properties (opens up when
 L4 hasn't hit, throttles when it hits too often) while L1-L3 use
 simpler uniform probability.
 
-**Open question:** How to parametrize L1-L3 to reliably signal at the
+**Open question:** How to parametrize L1-L9 to reliably signal at the
 target rates while still being verifiable and independent?
 
-Option A: Flat threshold (simple, no incentive shaping)
-```
-L_μ hit if: Blake2b512(rho || DOMAIN_μ) / 2^512 < P_μ
-```
+### Approach 5: Flat Conditional at All Levels (Current Implementation)
 
-Option B: Block-gap conditional (LDD-lite)
-```
-gap = baseBlockHeight - lastLevelMuHeight
-L_μ hit if: Blake2b512(rho || DOMAIN_μ) / 2^512 < f(gap, P_μ)
-```
-where f ramps from 0 to P_μ over some block-count window.
+P(Lμ|L0) = 1/2^μ for all levels. 10 levels (L0-L9), targeting 1-512 block spacing. 
+Confirmed working over 10k slots with clean 2x decay:
+  L0=1434, L1=730, L2=351, L3=174, L4=99, L5=48, L6=19, L7=8, L8=6, L9=0
 
-**Advantage of block-count gaps:** The test frequency matches the gap
-unit. If L2 targets every 4th block and the gap is "3 blocks since
-last L2 hit," the threshold is meaningful. With slot-based gaps gated
-behind L0, the gap is always 50-300 slots regardless of how many
-blocks passed.
+**Problem:** Flat conditional adds zero security beyond base chain length.
+An adversary who forges N base blocks automatically gets N/2 L1 hits,
+N/4 L2 hits, etc. Superblock weight is deterministic from chain length.
+The super levels are cosmetic — they don't increase adversary cost.
+
+### KEY INSIGHT: Per-Level LDD is the Novel Contribution
+
+**Why per-level LDD matters for security (degrees of freedom argument):**
+
+With flat conditional, superblocks are free. With independent LDD curves:
+- Each level's threshold depends on when THAT level last hit
+- Adversary must simultaneously optimize block timing across all levels
+- Domain separation prevents a single lucky VRF from satisfying multiple levels
+- A burst of blocks at gap=1 scores zero on every super level (all thresholds ~0)
+- Adversary must spread blocks temporally to satisfy multiple snowplows
+- Temporal spreading directly limits adversary throughput
+
+This ties superblock security to the TEMPORAL DISTRIBUTION of blocks,
+not just block count. That's genuinely novel vs PoW NiPoPoWs.
+
+**Why we haven't solved it yet:**
+The engineering challenge is that super levels only get tested on L0 blocks
+(~15% of slots), so their gaps measured in slots grow huge and collapse
+to baseline. Approaches tried:
+1. Slot-based per-level gaps → all collapse to baseline
+2. Block-count gaps → inverted rates (higher levels hit more)
+3. Extended cutoffs with ψ offsets → still too sparse
+
+**The path forward:**
+Each level L0-L9 needs its own independently tuned curve. Not just
+scaled versions of L0 — truly different functional forms that account
+for:
+- Being gated behind L0 (~15% test frequency)
+- The gap unit (slots vs blocks vs level-specific measure)
+- The desired conditional hit rate given the test frequency
+- Interaction between multiple levels' snowplow incentives
+
+This is the paper worth writing — the flat version is a trivial PoW port,
+but per-level LDD with properly tuned curves that increase adversary
+cost is a genuine contribution to PoS security.
 
 ---
 
