@@ -78,6 +78,8 @@ object TaktikosSimulation extends IOApp.Simple {
       epochRef         <- Ref.of[IO, Long](0L)
       rhoNoncesRef     <- Ref.of[IO, List[Array[Byte]]](Nil)
       subchainsRef     <- Ref.of[IO, Vector[SuperLevels.SubchainEntry]](SuperLevels.GenesisState)
+      baseCountRef     <- Ref.of[IO, Long](0L)  // Cumulative L0 block count
+      slotGapRef       <- Ref.of[IO, Long](1L)  // Slots since last L0 block
 
       results <- (1L to config.totalSlots).toList.traverse { slot =>
         for {
@@ -99,29 +101,32 @@ object TaktikosSimulation extends IOApp.Simple {
 
           activeEta        <- etaRef.get
           currentSubchains <- subchainsRef.get
+          currentBaseCount <- baseCountRef.get
+          currentSlotGap   <- slotGapRef.get
 
-          // Base gap for display (from subchain level-0 last hit slot)
-          baseGap = slot - currentSubchains(0)._1
-
-          // Check all stakers at ALL levels (independent, every slot)
+          // Check all stakers at ALL levels using per-level LDD
           eligibilities = stakers.map { staker =>
-            LeaderElection.checkEligibilityAllLevels(staker, slot, currentSubchains, activeEta, config.totalStake)
+            LeaderElection.checkEligibilityAllLevels(
+              staker, slot, currentSlotGap, currentBaseCount,
+              currentSubchains, activeEta, config.totalStake
+            )
           }
 
           eligible = eligibilities.filter(_.isEligible) // base-eligible (L0 hit)
           isFork   = eligible.size > 1
 
-          // Update subchain state from the first eligible staker (L0 gated)
+          // Update subchain state and counters from the first eligible staker
           newSubchains <- eligible.headOption match {
             case Some(leader) =>
+              val newBaseCount = currentBaseCount + 1
               val blockHash = computeBlockHash(slot, leader.stakerId, currentSubchains)
-              val updated   = LeaderElection.updateSubchains(currentSubchains, slot, blockHash, leader.levelHits)
-              subchainsRef.set(updated) *> IO.pure(updated)
+              val updated   = LeaderElection.updateSubchains(currentSubchains, newBaseCount, blockHash, leader.levelHits)
+              subchainsRef.set(updated) *> baseCountRef.set(newBaseCount) *> slotGapRef.set(1L) *> IO.pure(updated)
             case None =>
-              IO.pure(currentSubchains)
+              slotGapRef.update(_ + 1) *> IO.pure(currentSubchains)
           }
 
-          result = SlotResult(slot, baseGap, newEpoch, eligible.size, eligibilities, isFork, newSubchains)
+          result = SlotResult(slot, currentSlotGap, newEpoch, eligible.size, eligibilities, isFork, newSubchains)
 
           // Accumulate rho nonce hashes
           _ <- eligible.traverse_ { leader =>
