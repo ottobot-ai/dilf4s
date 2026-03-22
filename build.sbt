@@ -160,8 +160,9 @@ lazy val signing = project.in(file("signing"))
     libraryDependencies ++= Seq(
       Libraries.cats,
       Libraries.catsEffect,
-      Libraries.ed25519Elisabeth,
       Libraries.curve25519Elisabeth,
+      Libraries.circeGeneric % Test,
+      Libraries.circeParser  % Test,
     )
   )
   .dependsOn(models, sharedTest % Test)
