@@ -40,16 +40,6 @@ lazy val commonSettings = Seq(
     CompilerPlugin.kindProjector,
     CompilerPlugin.betterMonadicFor,
     CompilerPlugin.semanticDB,
-    Libraries.bc,
-    Libraries.cats,
-    Libraries.catsEffect,
-    Libraries.circeCore,
-    Libraries.circeGeneric,
-    Libraries.circeParser,
-    Libraries.levelDb,
-    Libraries.levelDbJni,
-    Libraries.logback,
-    Libraries.log4cats
   )
 )
 
@@ -73,14 +63,135 @@ lazy val buildInfoSettings = Seq(
   buildInfoPackage := "xyz.kd5ujc.buildinfo"
 )
 
+// ─── Root aggregator ───
 lazy val root = project.in(file("."))
-  .enablePlugins(BuildInfoPlugin)
   .settings(
     name := "dilf4s",
+    commonSettings,
+    publish / skip := true
+  )
+  .aggregate(models, sharedTest, core, accumulators, storage, signing, vrf, kes)
+
+// ─── Models: cross-cutting value types ───
+lazy val models = project.in(file("models"))
+  .settings(
+    name := "dilf4s-models",
+    commonSettings,
+    commonTestSettings,
+    libraryDependencies ++= Seq(
+      Libraries.cats,
+      Libraries.circeCore,
+    )
+  )
+
+// ─── Shared Test Utilities ───
+lazy val sharedTest = project.in(file("shared-test"))
+  .settings(
+    name := "dilf4s-shared-test",
+    commonSettings,
+    libraryDependencies ++= Seq(
+      Libraries.weaverCats,
+      Libraries.weaverScalaCheck,
+    )
+  )
+  .dependsOn(models)
+
+// ─── Core: hash implementations, serialization ───
+lazy val core = project.in(file("core"))
+  .enablePlugins(BuildInfoPlugin)
+  .settings(
+    name := "dilf4s-core",
     buildInfoSettings,
     commonSettings,
-    commonTestSettings
+    commonTestSettings,
+    libraryDependencies ++= Seq(
+      Libraries.bc,
+      Libraries.cats,
+      Libraries.catsEffect,
+      Libraries.circeCore,
+      Libraries.circeGeneric,
+      Libraries.circeParser,
+    )
   )
+  .dependsOn(models, sharedTest % Test)
+
+// ─── Accumulators: Merkle, MPT, Verkle (self-contained) ───
+lazy val accumulators = project.in(file("accumulators"))
+  .settings(
+    name := "dilf4s-accumulators",
+    commonSettings,
+    commonTestSettings,
+    libraryDependencies ++= Seq(
+      Libraries.cats,
+      Libraries.catsEffect,
+      Libraries.circeCore,
+      Libraries.circeGeneric,
+      Libraries.circeParser,
+    )
+  )
+  .dependsOn(models, core, sharedTest % Test)
+
+// ─── Storage: Store, VersionedStore (self-contained) ───
+lazy val storage = project.in(file("storage"))
+  .settings(
+    name := "dilf4s-storage",
+    commonSettings,
+    commonTestSettings,
+    libraryDependencies ++= Seq(
+      Libraries.cats,
+      Libraries.catsEffect,
+      Libraries.circeCore,
+      Libraries.circeGeneric,
+      Libraries.circeParser,
+      Libraries.levelDb,
+      Libraries.levelDbJni,
+      Libraries.logback,
+      Libraries.log4cats,
+    )
+  )
+  .dependsOn(models, core, sharedTest % Test)
+
+// ─── Signing: Ed25519, Extended Ed25519 ───
+lazy val signing = project.in(file("signing"))
+  .settings(
+    name := "dilf4s-signing",
+    commonSettings,
+    commonTestSettings,
+    libraryDependencies ++= Seq(
+      Libraries.cats,
+      Libraries.catsEffect,
+      Libraries.ed25519Elisabeth,
+      Libraries.curve25519Elisabeth,
+    )
+  )
+  .dependsOn(models, sharedTest % Test)
+
+// ─── VRF: ECVRF-ED25519-SHA512-TAI ───
+lazy val vrf = project.in(file("vrf"))
+  .settings(
+    name := "dilf4s-vrf",
+    commonSettings,
+    commonTestSettings,
+    libraryDependencies ++= Seq(
+      Libraries.cats,
+      Libraries.catsEffect,
+      Libraries.curve25519Elisabeth,
+    )
+  )
+  .dependsOn(models, signing, sharedTest % Test)
+
+// ─── KES: Forward-secure Key Evolving Signatures ───
+lazy val kes = project.in(file("kes"))
+  .settings(
+    name := "dilf4s-kes",
+    commonSettings,
+    commonTestSettings,
+    libraryDependencies ++= Seq(
+      Libraries.cats,
+      Libraries.catsEffect,
+    )
+  )
+  .dependsOn(models, signing, core, sharedTest % Test)
 
 addCommandAlias("checkPR", s"; scalafixAll --check; scalafmtCheckAll")
 addCommandAlias("preparePR", s"; scalafixAll; scalafmtAll")

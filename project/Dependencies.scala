@@ -16,6 +16,8 @@ object Dependencies {
     val betterMonadicFor = "0.3.1"
     val kindProjector = "0.13.2"
     val semanticDB = "4.8.15"
+    val ed25519Elisabeth = "0.1.0"
+    val curve25519Elisabeth = "0.1.0"
   }
 
   object Libraries {
@@ -34,6 +36,8 @@ object Dependencies {
     val levelDbJni = "org.fusesource.leveldbjni" % "leveldbjni-all" % V.levelDbJni
     val log4cats = "org.typelevel" %% "log4cats-slf4j" % V.log4cats
     val logback = "ch.qos.logback" % "logback-classic" % V.logback
+    val ed25519Elisabeth = "cafe.cryptography" % "ed25519-elisabeth" % V.ed25519Elisabeth
+    val curve25519Elisabeth = "cafe.cryptography" % "curve25519-elisabeth" % V.curve25519Elisabeth
   }
 
   object CompilerPlugin {
