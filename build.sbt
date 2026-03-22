@@ -177,6 +177,8 @@ lazy val vrf = project.in(file("vrf"))
       Libraries.cats,
       Libraries.catsEffect,
       Libraries.curve25519Elisabeth,
+      Libraries.circeGeneric % Test,
+      Libraries.circeParser  % Test,
     )
   )
   .dependsOn(models, signing, sharedTest % Test)
