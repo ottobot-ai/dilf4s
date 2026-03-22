@@ -41,7 +41,7 @@ object TaktikosSimulation extends IOApp.Simple {
       _ <- IO.println(s"Stake: ${stakers.map(s => s"S${s.id}=${s.stake}").mkString(", ")}")
       _ <- IO.println(s"Super-levels: ${SuperLevels.Count} (domains: ${SuperLevels.Domains.mkString(", ")})")
       _ <- IO.println(s"L0: LDD snowplow (amplitude=${SuperLevels.BaseConfig.amplitude}, baseline=${SuperLevels.BaseConfig.baselineDifficulty}, cutoff=${SuperLevels.BaseConfig.lddCutoff})")
-      _ <- IO.println(s"L1-L9: flat conditional P(Lμ|L0) = 1/2^μ")
+      _ <- IO.println(s"L1-L9: shifted exponential on base-block gap (ψ=1, per-level maxProb/scale)")
       _ <- IO.println("---")
 
       results <- simulateSlots(stakers, config, genesisEta)

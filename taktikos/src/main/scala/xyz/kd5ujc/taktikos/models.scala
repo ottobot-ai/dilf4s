@@ -132,15 +132,15 @@ object SuperLevels {
    * See paper/analysis/RESULTS.md for full derivation.
    */
   val SuperLevelConfigs: Vector[ShiftedExpConfig] = Vector(
-    ShiftedExpConfig(level = 1, psi = 1, maxProb = 0.990000, scale = 0.1000),
-    ShiftedExpConfig(level = 2, psi = 1, maxProb = 0.511239, scale = 1.9973),
-    ShiftedExpConfig(level = 3, psi = 1, maxProb = 0.215899, scale = 4.0007),
-    ShiftedExpConfig(level = 4, psi = 1, maxProb = 0.111954, scale = 8.0001),
-    ShiftedExpConfig(level = 5, psi = 1, maxProb = 0.047830, scale = 16.0000),
-    ShiftedExpConfig(level = 6, psi = 1, maxProb = 0.023205, scale = 32.0000),
-    ShiftedExpConfig(level = 7, psi = 1, maxProb = 0.015233, scale = 64.0000),
-    ShiftedExpConfig(level = 8, psi = 1, maxProb = 0.006707, scale = 128.0000),
-    ShiftedExpConfig(level = 9, psi = 1, maxProb = 0.002392, scale = 230.4000)
+    ShiftedExpConfig(level = 1, psi = 1, maxProb = 1.130555, scale = 0.500000),   // target 50.0% cond
+    ShiftedExpConfig(level = 2, psi = 1, maxProb = 0.346157, scale = 0.500000),   // target 25.0%
+    ShiftedExpConfig(level = 3, psi = 1, maxProb = 0.321504, scale = 7.921053),   // target 12.5%
+    ShiftedExpConfig(level = 4, psi = 1, maxProb = 0.248923, scale = 30.342105),  // target 6.25%
+    ShiftedExpConfig(level = 5, psi = 1, maxProb = 0.076907, scale = 27.526316),  // target 3.125%
+    ShiftedExpConfig(level = 6, psi = 1, maxProb = 0.027017, scale = 40.500000),  // target 1.5625%
+    ShiftedExpConfig(level = 7, psi = 1, maxProb = 0.012777, scale = 56.000000),  // target 0.78125%
+    ShiftedExpConfig(level = 8, psi = 1, maxProb = 0.004451, scale = 64.000000),  // target 0.390625%
+    ShiftedExpConfig(level = 9, psi = 1, maxProb = 0.001814, scale = 72.000000)   // target 0.195313%
   )
 
   // Legacy: flat conditional probabilities (for comparison/fallback)
