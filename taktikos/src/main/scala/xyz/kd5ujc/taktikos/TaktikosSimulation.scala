@@ -21,7 +21,7 @@ object TaktikosSimulation extends IOApp.Simple {
 
   val config: SimulationConfig = SimulationConfig(
     numStakers    = 5,
-    totalSlots    = 1000,
+    totalSlots    = 10000,
     slotsPerEpoch = 100,
     vrfConfig     = SuperLevels.BaseConfig,
     totalStake    = 10000
@@ -40,10 +40,8 @@ object TaktikosSimulation extends IOApp.Simple {
       _ <- IO.println(s"Starting Taktikos simulation with ${config.numStakers} stakers, ${config.totalSlots} slots")
       _ <- IO.println(s"Stake: ${stakers.map(s => s"S${s.id}=${s.stake}").mkString(", ")}")
       _ <- IO.println(s"Super-levels: ${SuperLevels.Count} (domains: ${SuperLevels.Domains.mkString(", ")})")
-      _ <- IO.println(s"Base LDD: amplitude=${SuperLevels.BaseConfig.amplitude}, baseline=${SuperLevels.BaseConfig.baselineDifficulty}")
-      _ <- SuperLevels.LevelConfigs.zipWithIndex.toList.traverse_ { case (c, i) =>
-        IO.println(f"  Level $i: ψ=${c.offset}%3d  γ=${c.lddCutoff}%3d  (ramp ${c.offset}%d–${c.lddCutoff}%d)")
-      }
+      _ <- IO.println(s"L0: LDD snowplow (amplitude=${SuperLevels.BaseConfig.amplitude}, baseline=${SuperLevels.BaseConfig.baselineDifficulty}, cutoff=${SuperLevels.BaseConfig.lddCutoff})")
+      _ <- IO.println(s"L1-L9: flat conditional P(Lμ|L0) = 1/2^μ")
       _ <- IO.println("---")
 
       results <- simulateSlots(stakers, config, genesisEta)
@@ -113,22 +111,15 @@ object TaktikosSimulation extends IOApp.Simple {
           eligible = eligibilities.filter(_.isEligible) // base-eligible (L0 hit)
           isFork   = eligible.size > 1
 
-          // Merge level hits from all stakers for subchain update
-          // (any staker hitting any level counts — in Phase 2, only canonical block's hits count)
-          allLevelHits = eligibilities.map(_.levelHits)
-            .foldLeft(Vector.fill(SuperLevels.Count)(false)) { (acc, hits) =>
-              acc.zip(hits).map { case (a, b) => a || b }
-            }
-
-          // Update subchain state for ALL level hits (not just base blocks)
-          newSubchains <- if (allLevelHits.exists(identity)) {
-            val blockHash = eligible.headOption match {
-              case Some(leader) => computeBlockHash(slot, leader.stakerId, currentSubchains)
-              case None         => LeaderElection.blake2b256(BigInt(slot).toByteArray) // super-only hit
-            }
-            val updated = LeaderElection.updateSubchains(currentSubchains, slot, blockHash, allLevelHits)
-            subchainsRef.set(updated) *> IO.pure(updated)
-          } else IO.pure(currentSubchains)
+          // Update subchain state from the first eligible staker (L0 gated)
+          newSubchains <- eligible.headOption match {
+            case Some(leader) =>
+              val blockHash = computeBlockHash(slot, leader.stakerId, currentSubchains)
+              val updated   = LeaderElection.updateSubchains(currentSubchains, slot, blockHash, leader.levelHits)
+              subchainsRef.set(updated) *> IO.pure(updated)
+            case None =>
+              IO.pure(currentSubchains)
+          }
 
           result = SlotResult(slot, baseGap, newEpoch, eligible.size, eligibilities, isFork, newSubchains)
 
@@ -146,31 +137,10 @@ object TaktikosSimulation extends IOApp.Simple {
     } yield results
 
   def printSlotResult(result: SlotResult): IO[Unit] = {
-    val eligible = result.eligibilities.filter(_.isEligible)
-
-    eligible match {
-      case Nil =>
-        if (result.slot % 100 == 0)
-          IO.println(f"Slot ${result.slot}%4d: [gap=${result.gap}%2d] — empty")
-        else IO.unit
-
-      case single :: Nil =>
-        val hits = levelHitString(single.levelHits)
-        IO.println(
-          f"Slot ${result.slot}%4d: [gap=${result.gap}%2d] S${single.stakerId} " +
-          f"$hits heights=${heightString(result.subchains)}"
-        )
-
-      case multi =>
-        val names = multi.map { e =>
-          val hits = levelHitString(e.levelHits)
-          s"S${e.stakerId}$hits"
-        }.mkString(", ")
-        IO.println(
-          f"Slot ${result.slot}%4d: [gap=${result.gap}%2d] ⚡ FORK — $names " +
-          f"heights=${heightString(result.subchains)}"
-        )
-    }
+    // For 10k slots, only print milestones
+    if (result.slot % 1000 == 0) {
+      IO.println(f"Slot ${result.slot}%5d: heights=${heightString(result.subchains)}")
+    } else IO.unit
   }
 
   /** Format level hits as e.g. "[0,2,4]" showing which levels were hit */

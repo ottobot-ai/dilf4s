@@ -97,17 +97,12 @@ object LeaderElection {
   // ------- Multi-level eligibility -------
 
   /**
-   * Check eligibility at ALL levels independently every slot.
+   * Check eligibility at all levels.
    *
-   * Each level has its own LDD curve (with ψ offset from the paper) and tracks
-   * its own last-hit slot. The gap for level-μ is: currentSlot - lastHitSlot_μ.
-   *
-   * All levels are tested every slot — super levels are NOT gated behind L0.
-   * A super-level hit at a non-block slot is recorded; it only "activates"
-   * when the next base block arrives and carries the super claim.
-   *
-   * The ψ parameter naturally prevents super levels from firing too early:
-   *   L1 has ψ=15, so f(δ)=0 until gap₁≥15. No separate gate needed.
+   * L0:    LDD snowplow on slot gap (primary chain growth)
+   * L1-L9: Flat conditional probability per base block: P = 1/2^level
+   *        Domain-separated hashes give independent tests.
+   *        Gated behind L0 — need a base block to carry super claims.
    */
   def checkEligibilityAllLevels(
     staker:     Staker,
@@ -119,27 +114,40 @@ object LeaderElection {
     val relativeStake = staker.stake.toDouble / totalStake.toDouble
     val rho           = rhoForSlot(staker.vrfSK, slot, eta)
 
-    // Test every level independently using its own gap and LDD curve
-    val levelHits = (0 until SuperLevels.Count).toVector.map { level =>
-      val levelGap = slot - subchains(level)._1
-      val thr      = getThreshold(relativeStake, levelGap, SuperLevels.LevelConfigs(level))
-      val (hit, _) = isSlotLeaderForLevel(thr, rho, SuperLevels.Domains(level))
-      hit
-    }
-
-    // Level-0 determines base eligibility (block production)
+    // Level-0: LDD on slot gap
     val gap0          = slot - subchains(0)._1
-    val baseThreshold = getThreshold(relativeStake, gap0, SuperLevels.LevelConfigs(0))
-    val (_, test0)    = isSlotLeaderForLevel(baseThreshold, rho, SuperLevels.Domains(0))
+    val baseThreshold = getThreshold(relativeStake, gap0, SuperLevels.BaseConfig)
+    val (eligible0, test0) = isSlotLeaderForLevel(baseThreshold, rho, SuperLevels.Domains(0))
 
-    StakerEligibility(
-      stakerId     = staker.id,
-      isEligible   = levelHits(0), // base eligible = produced a block
-      threshold    = baseThreshold,
-      testValue    = test0,
-      stakePercent = relativeStake * 100.0,
-      levelHits    = levelHits
-    )
+    if (!eligible0) {
+      StakerEligibility(
+        stakerId     = staker.id,
+        isEligible   = false,
+        threshold    = baseThreshold,
+        testValue    = test0,
+        stakePercent = relativeStake * 100.0,
+        levelHits    = Vector.fill(SuperLevels.Count)(false)
+      )
+    } else {
+      // Base-eligible — test all super levels with flat conditional probability
+      val levelHits = (0 until SuperLevels.Count).toVector.map { level =>
+        if (level == 0) true
+        else {
+          val prob     = SuperLevels.ConditionalProbabilities(level)
+          val (hit, _) = isSlotLeaderForLevel(prob, rho, SuperLevels.Domains(level))
+          hit
+        }
+      }
+
+      StakerEligibility(
+        stakerId     = staker.id,
+        isEligible   = true,
+        threshold    = baseThreshold,
+        testValue    = test0,
+        stakePercent = relativeStake * 100.0,
+        levelHits    = levelHits
+      )
+    }
   }
 
   // ------- Subchain state update -------

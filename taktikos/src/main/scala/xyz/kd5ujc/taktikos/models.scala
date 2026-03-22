@@ -65,32 +65,23 @@ case class VrfConfig(
 // ---------------------------------------------------------------------------
 
 object SuperLevels {
-  /** Number of superblock levels (0 = base, 1..4 = super) */
-  val Count: Int = 5
-
   /**
-   * Domain separation strings for each level's eligibility test.
-   * Blake2b512(rho || domain) is the test hash — each level gets
-   * an independent hash value from the same VRF output.
+   * Superblock levels: L0 (base) through L9.
+   *
+   * L0:     LDD snowplow on slot gap (primary chain growth driver)
+   * L1-L3:  Flat conditional probability per base block (1/2, 1/4, 1/8)
+   * L4-L9:  Self-regulating LDD on block-count gap (every 16, 32, 64, 128, 256, 512 blocks)
    */
-  val Domains: Vector[String] = Vector("TEST", "TEST-1", "TEST-2", "TEST-3", "TEST-4")
+  val Count: Int = 10
+
+  /** Domain separation strings for each level */
+  val Domains: Vector[String] = (0 until Count).toVector.map {
+    case 0 => "TEST"
+    case n => s"TEST-$n"
+  }
 
   /**
-   * Base LDD curve parameters. Each level derives its own curve from these:
-   *
-   *   Level μ: ψ_μ = γ_{μ-1}  (previous level's cutoff)
-   *            γ_μ = baseCutoff × 2^μ
-   *
-   * The snowplow ramp for level μ is f(δ) = 0 for δ < ψ_μ,
-   * then ramps linearly from ψ_μ to γ_μ. This means super levels
-   * are dormant while the level below should be producing blocks,
-   * and activate naturally once the gap exceeds the lower level's cutoff.
-   *
-   *   Level 0: ψ=0,   γ=15   (ramp 0–15,   active immediately)
-   *   Level 1: ψ=15,  γ=30   (ramp 15–30,  dormant until gap > 15)
-   *   Level 2: ψ=30,  γ=60   (ramp 30–60,  dormant until gap > 30)
-   *   Level 3: ψ=60,  γ=120  (ramp 60–120, dormant until gap > 60)
-   *   Level 4: ψ=120, γ=240  (ramp 120–240, dormant until gap > 120)
+   * L0 uses LDD snowplow on slot gap (primary chain growth driver).
    */
   val BaseConfig: VrfConfig = VrfConfig(
     lddCutoff          = 15,
@@ -100,12 +91,22 @@ object SuperLevels {
     amplitude          = Ratio(1, 2)
   )
 
-  /** Per-level LDD config: γ_μ = baseCutoff × 2^μ, ψ_μ = γ_{μ-1} (0 for level 0) */
-  val LevelConfigs: Vector[VrfConfig] = (0 until Count).toVector.map { level =>
-    val gamma = BaseConfig.lddCutoff * (1 << level)
-    val psi   = if (level == 0) 0 else BaseConfig.lddCutoff * (1 << (level - 1))
-    BaseConfig.copy(lddCutoff = gamma, offset = psi)
-  }
+  /**
+   * L1-L9: flat conditional probability per base block.
+   * P(Lμ | L0) = 1 / 2^μ — simple domain-separated coin flip.
+   *
+   *   L1: 1/2   → every 2nd block
+   *   L2: 1/4   → every 4th block
+   *   L3: 1/8   → every 8th block
+   *   L4: 1/16  → every 16th block
+   *   L5: 1/32  → every 32nd block
+   *   L6: 1/64  → every 64th block
+   *   L7: 1/128 → every 128th block
+   *   L8: 1/256 → every 256th block
+   *   L9: 1/512 → every 512th block
+   */
+  val ConditionalProbabilities: Vector[Double] =
+    (0 until Count).toVector.map(level => 1.0 / (1 << level))
 
   /**
    * Per-level subchain entry: (lastHitSlot, height, tipHash).
