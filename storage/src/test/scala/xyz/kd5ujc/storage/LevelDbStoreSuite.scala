@@ -10,8 +10,8 @@ import cats.effect.{IO, Resource}
 import xyz.kd5ujc.binary.JsonSerializer
 import xyz.kd5ujc.storage.Store
 import xyz.kd5ujc.storage.store.LevelDbStore
-
 import xyz.kd5ujc.test.generators.kvListGenUniqueKeys
+
 import weaver.IOSuite
 import weaver.scalacheck.Checkers
 

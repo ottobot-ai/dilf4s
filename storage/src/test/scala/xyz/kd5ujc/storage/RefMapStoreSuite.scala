@@ -5,8 +5,8 @@ import cats.effect.IO
 
 import xyz.kd5ujc.storage.Store
 import xyz.kd5ujc.storage.store.RefMapStore
-
 import xyz.kd5ujc.test.generators.kvListGenUniqueKeys
+
 import weaver._
 import weaver.scalacheck.Checkers
 

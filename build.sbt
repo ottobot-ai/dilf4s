@@ -192,6 +192,9 @@ lazy val kes = project.in(file("kes"))
     libraryDependencies ++= Seq(
       Libraries.cats,
       Libraries.catsEffect,
+      Libraries.bc,
+      Libraries.circeGeneric % Test,
+      Libraries.circeParser  % Test,
     )
   )
   .dependsOn(models, signing, core, sharedTest % Test)

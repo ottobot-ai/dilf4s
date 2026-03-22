@@ -7,8 +7,8 @@ import cats.implicits.toTraverseOps
 
 import xyz.kd5ujc.storage.VersionedStore
 import xyz.kd5ujc.storage.versioned_store.VersionedRefStore
-
 import xyz.kd5ujc.test.generators.kvListGenUniqueKeys
+
 import org.scalacheck.Gen
 import weaver.SimpleIOSuite
 import weaver.scalacheck.Checkers

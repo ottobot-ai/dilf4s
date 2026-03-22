@@ -50,7 +50,7 @@ class Ed25519 extends SignatureScheme[Ed25519.SecretKey, Ed25519.PublicKey] {
     val scalar = h.slice(0, 32)
 
     // Clamp per RFC 8032 §5.1.5
-    scalar(0)  = (scalar(0) & 0xf8).toByte
+    scalar(0) = (scalar(0) & 0xf8).toByte
     scalar(31) = (scalar(31) & 0x7f).toByte
     scalar(31) = (scalar(31) | 0x40).toByte
 
@@ -61,9 +61,9 @@ class Ed25519 extends SignatureScheme[Ed25519.SecretKey, Ed25519.PublicKey] {
 
 object Ed25519 {
   val SignatureLength: Int = 64
-  val KeyLength:       Int = 32
+  val KeyLength: Int = 32
   val PublicKeyLength: Int = 32
-  val SeedLength:      Int = 32
+  val SeedLength: Int = 32
 
   case class SecretKey(bytes: Array[Byte]) extends SigningKey {
     require(bytes.length == KeyLength, s"Invalid secret key length. Expected: $KeyLength, got: ${bytes.length}")

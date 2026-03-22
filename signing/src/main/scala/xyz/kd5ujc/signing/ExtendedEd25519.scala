@@ -35,7 +35,7 @@ class ExtendedEd25519 extends SignatureScheme[ExtendedEd25519.SecretKey, Extende
     val clamped = seed.slice(0, SeedLength).clone()
 
     // Clamp bits per BIP32-Ed25519 / CIP-0003 / SLIP-0023
-    clamped(0)  = (clamped(0) & 0xf8).toByte
+    clamped(0) = (clamped(0) & 0xf8).toByte
     clamped(31) = (clamped(31) & 0x1f).toByte
     clamped(31) = (clamped(31) | 0x40).toByte
 
@@ -68,9 +68,9 @@ class ExtendedEd25519 extends SignatureScheme[ExtendedEd25519.SecretKey, Extende
    * Works with both soft and hardened indices.
    */
   def deriveChildSecretKey(sk: SecretKey, index: Bip32Index): SecretKey = {
-    val lNum: BigInt = BigInt(1, sk.leftKey.reverse)   // little-endian → BigInt
+    val lNum: BigInt = BigInt(1, sk.leftKey.reverse) // little-endian → BigInt
     val rNum: BigInt = BigInt(1, sk.rightKey.reverse)
-    val pk           = getVerificationKey(sk)
+    val pk = getVerificationKey(sk)
 
     // z = HMAC-SHA-512(chainCode, data)
     val zData = if (index.isHardened) {
@@ -80,10 +80,10 @@ class ExtendedEd25519 extends SignatureScheme[ExtendedEd25519.SecretKey, Extende
     }
     val z = hmacSha512(sk.chainCode, zData)
 
-    val zLeft  = BigInt(1, z.slice(0, 28).reverse)   // only first 28 bytes
+    val zLeft = BigInt(1, z.slice(0, 28).reverse) // only first 28 bytes
     val zRight = BigInt(1, z.slice(32, 64).reverse)
 
-    val nextLeft  = sec256LE(zLeft * 8 + lNum)
+    val nextLeft = sec256LE(zLeft * 8 + lNum)
     val nextRight = sec256LE((zRight + rNum) % BigInt(2).pow(256))
 
     // Chain code derivation
@@ -102,16 +102,16 @@ class ExtendedEd25519 extends SignatureScheme[ExtendedEd25519.SecretKey, Extende
    * Only works with soft indices (hardened requires the secret key).
    */
   def deriveChildVerificationKey(pk: PublicKey, index: Bip32Index.SoftIndex): PublicKey = {
-    val z  = hmacSha512(pk.chainCode, Array(0x02.toByte) ++ pk.vk.bytes ++ index.bytes)
+    val z = hmacSha512(pk.chainCode, Array(0x02.toByte) ++ pk.vk.bytes ++ index.bytes)
     val zL = z.slice(0, 28)
 
     val zLMult8 = sec256LE(BigInt(1, zL.reverse) * 8)
 
     // EC point operations using curve25519-elisabeth
-    val scaledZL      = Constants.ED25519_BASEPOINT_TABLE.multiply(Scalar.fromBits(zLMult8))
+    val scaledZL = Constants.ED25519_BASEPOINT_TABLE.multiply(Scalar.fromBits(zLMult8))
     val existingPoint = new CompressedEdwardsY(pk.vk.bytes).decompress()
-    val newPoint      = scaledZL.add(existingPoint)
-    val newPkBytes    = newPoint.compress().toByteArray
+    val newPoint = scaledZL.add(existingPoint)
+    val newPkBytes = newPoint.compress().toByteArray
 
     val nextCC = hmacSha512(pk.chainCode, Array(0x03.toByte) ++ pk.vk.bytes ++ index.bytes).slice(32, 64)
 
@@ -128,18 +128,18 @@ class ExtendedEd25519 extends SignatureScheme[ExtendedEd25519.SecretKey, Extende
    * Serialize BigInt to 32-byte little-endian array.
    */
   private def sec256LE(p: BigInt): Array[Byte] = {
-    val bytes    = p.toByteArray     // big-endian, may have leading zero byte
-    val reversed = bytes.reverse     // now little-endian
+    val bytes = p.toByteArray // big-endian, may have leading zero byte
+    val reversed = bytes.reverse // now little-endian
     reversed.padTo(32, 0.toByte).take(32)
   }
 }
 
 object ExtendedEd25519 {
   val SignatureLength: Int = 64
-  val KeyLength:       Int = 32
+  val KeyLength: Int = 32
   val PublicKeyLength: Int = 32
   val ChainCodeLength: Int = 32
-  val SeedLength:      Int = 96
+  val SeedLength: Int = 96
 
   case class SecretKey(
     leftKey:   Array[Byte],
@@ -163,11 +163,10 @@ object ExtendedEd25519 {
       case _ => false
     }
 
-    override def hashCode(): Int = {
+    override def hashCode(): Int =
       java.util.Arrays.hashCode(leftKey) +
-      31 * java.util.Arrays.hashCode(rightKey) +
-      31 * 31 * java.util.Arrays.hashCode(chainCode)
-    }
+        31 * java.util.Arrays.hashCode(rightKey) +
+        31 * 31 * java.util.Arrays.hashCode(chainCode)
   }
 
   case class PublicKey(vk: Ed25519.PublicKey, chainCode: Array[Byte]) extends VerificationKey {

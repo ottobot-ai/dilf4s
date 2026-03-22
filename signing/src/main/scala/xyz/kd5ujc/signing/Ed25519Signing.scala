@@ -16,8 +16,8 @@ import cafe.cryptography.curve25519.{CompressedEdwardsY, Constants, EdwardsPoint
  */
 object Ed25519Signing {
 
-  val ScalarBytes: Int    = 32
-  val PointBytes: Int     = 32
+  val ScalarBytes: Int = 32
+  val PointBytes: Int = 32
   val SignatureBytes: Int = 64
 
   /**
@@ -37,21 +37,21 @@ object Ed25519Signing {
   ): Array[Byte] = {
     // r = SHA-512(noncePrefix || message) mod L
     val rHash = sha512(noncePrefix, message)
-    val r     = Scalar.fromBytesModOrderWide(rHash)
+    val r = Scalar.fromBytesModOrderWide(rHash)
 
     // R = r * B
-    val rPoint  = Constants.ED25519_BASEPOINT_TABLE.multiply(r)
+    val rPoint = Constants.ED25519_BASEPOINT_TABLE.multiply(r)
     val encodedR = rPoint.compress().toByteArray
 
     // k = SHA-512(R || publicKey || message) mod L
     val kHash = sha512(encodedR, publicKey, message)
-    val k     = Scalar.fromBytesModOrderWide(kHash)
+    val k = Scalar.fromBytesModOrderWide(kHash)
 
     // S = r + k * s mod L
     // Load scalar via fromBytesModOrderWide to properly handle all 256 bits.
     // For standard Ed25519, the clamped scalar has bit255=0 so this is identity.
     // For extended Ed25519, the leftKey may use all bits.
-    val s      = scalarFromBytes(scalar)
+    val s = scalarFromBytes(scalar)
     val sValue = r.add(k.multiply(s))
 
     // signature = R || S
@@ -86,19 +86,19 @@ object Ed25519Signing {
 
       // Decode S (last 32 bytes) — must be canonical
       val sBytes = signature.slice(PointBytes, SignatureBytes)
-      val s      = Scalar.fromCanonicalBytes(sBytes)
+      val s = Scalar.fromCanonicalBytes(sBytes)
 
       // Decode public key A
       val aPoint = new CompressedEdwardsY(publicKey).decompress()
 
       // k = SHA-512(R || A || message)
       val kHash = sha512(encodedR, publicKey, message)
-      val k     = Scalar.fromBytesModOrderWide(kHash)
+      val k = Scalar.fromBytesModOrderWide(kHash)
 
       // Check: [S]B == R + [k]A
       // Rearranged: [-k]A + [S]B == R
       // vartimeDoubleScalarMultiplyBasepoint(a, A, b) computes [a]A + [b]B
-      val kNeg   = Scalar.ZERO.subtract(k)
+      val kNeg = Scalar.ZERO.subtract(k)
       val result = EdwardsPoint.vartimeDoubleScalarMultiplyBasepoint(kNeg, aPoint, s)
 
       // Compare compressed forms
