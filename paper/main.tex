@@ -3,7 +3,8 @@
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{amsmath,amssymb,amsfonts}
-\usepackage{algorithm2e}
+% algorithm pseudocode via fancyvrb
+\usepackage{fancyvrb}
 \usepackage{graphicx}
 \usepackage{hyperref}
 \usepackage{cleveref}
@@ -205,22 +206,24 @@ where $s(\delta) = \min(1, \delta/\gamma)$ is the slot-gap scaling factor. Each 
 
 \paragraph{Chain selection rule.} We replace \texttt{maxvalid-tk} with a weight-based rule:
 
-\begin{algorithm}[H]
-\SetAlgoLined
-\KwIn{Security parameter $k$, local chain $C_{\text{loc}}$, candidates $C_1, \ldots, C_j$}
-\KwOut{Adopted chain $C$}
-$C \leftarrow C_{\text{loc}}$\;
-\ForEach{$C_i$}{
-    \If{$\text{valid}(C_i)$ \textbf{and} fork depth $\leq k$}{
-        \If{$W(C_i) > W(C)$}{
-            $C \leftarrow C_i$\;
-        }
-    }
-}
-\Return{$C$}\;
-\caption{\texttt{maxvalid-weighted}: Heaviest chain selection}
+\begin{figure}[H]
+\centering
+\fbox{\parbox{0.85\textwidth}{
+\textbf{Algorithm 1:} \texttt{maxvalid-weighted} --- Heaviest chain selection\\[4pt]
+\textbf{Input:} Security parameter $k$, local chain $C_{\text{loc}}$, candidates $C_1, \ldots, C_j$\\
+\textbf{Output:} Adopted chain $C$\\[4pt]
+\hspace*{1em}$C \leftarrow C_{\text{loc}}$\\
+\hspace*{1em}\textbf{for each} $C_i$ \textbf{do}\\
+\hspace*{2em}\textbf{if} $\text{valid}(C_i)$ \textbf{and} fork depth $\leq k$ \textbf{then}\\
+\hspace*{3em}\textbf{if} $W(C_i) > W(C)$ \textbf{then}\\
+\hspace*{4em}$C \leftarrow C_i$\\
+\hspace*{3em}\textbf{end if}\\
+\hspace*{2em}\textbf{end if}\\
+\hspace*{1em}\textbf{end for}\\
+\hspace*{1em}\textbf{return} $C$
+}}
 \label{alg:weighted}
-\end{algorithm}
+\end{figure}
 
 \subsection{Subchain State in Block Headers}
 

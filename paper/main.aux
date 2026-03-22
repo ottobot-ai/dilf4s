@@ -1,0 +1,111 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{nipopows}
+\citation{taktikos}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\citation{nipopows}
+\citation{flyclient}
+\citation{praos}
+\citation{taktikos}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Related Work}{2}{subsection.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{NIPoPoWs and FlyClient.}{2}{section*.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Ouroboros family.}{2}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{PoS light clients.}{2}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Preliminaries}{2}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Taktikos Leader Election}{2}{subsection.2.1}\protected@file@percent }
+\newlabel{eq:snowplow}{{2}{2}{Taktikos Leader Election}{equation.2.2}{}}
+\newlabel{eq:snowplow@cref}{{[equation][2][]2}{[1][2][]2}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}NIPoPoWs}{2}{subsection.2.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Shifted exponential parameters per level, with $\psi = 1$ for all levels. Target conditional rates are $1/2^\mu $. Achieved rates are from a 10M-slot simulation with 5 stakers.}}{3}{table.caption.8}\protected@file@percent }
+\newlabel{tab:params}{{1}{3}{Shifted exponential parameters per level, with $\psi = 1$ for all levels. Target conditional rates are $1/2^\mu $. Achieved rates are from a 10M-slot simulation with 5 stakers}{table.caption.8}{}}
+\newlabel{tab:params@cref}{{[table][1][]1}{[1][3][]3}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Construction}{3}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Multi-Level Eligibility with Shifted Exponential Thresholds}{3}{subsection.3.1}\protected@file@percent }
+\newlabel{sec:levels}{{3.1}{3}{Multi-Level Eligibility with Shifted Exponential Thresholds}{subsection.3.1}{}}
+\newlabel{sec:levels@cref}{{[subsection][1][3]3.1}{[1][2][]3}}
+\@writefile{toc}{\contentsline {paragraph}{Why not flat conditional probabilities?}{3}{section*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Shifted exponential thresholds.}{3}{section*.5}\protected@file@percent }
+\newlabel{eq:shifted_exp}{{4}{3}{Shifted exponential thresholds}{equation.3.4}{}}
+\newlabel{eq:shifted_exp@cref}{{[equation][4][]4}{[1][3][]3}}
+\@writefile{toc}{\contentsline {paragraph}{Tuned parameters.}{3}{section*.7}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces \textbf  {Eligibility threshold functions.} \emph  {(a)}~Level-0 LDD snowplow: the threshold rises linearly with slot gap up to the cutoff $\gamma = 15$, then drops to baseline $f_B = 0.05$. Blocks at small slot gaps face low thresholds, making them harder to produce. \emph  {(b)}~Levels 1--7: shifted exponential thresholds as a function of base-block gap. The dormant period $\psi = 1$ guarantees zero threshold at gap~1 (burst resistance). Higher levels have larger scale parameters $\sigma _\mu $, rising more slowly. No single gap value simultaneously maximizes all curves.}}{4}{figure.caption.6}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:thresholds}{{1}{4}{\textbf {Eligibility threshold functions.} \emph {(a)}~Level-0 LDD snowplow: the threshold rises linearly with slot gap up to the cutoff $\gamma = 15$, then drops to baseline $f_B = 0.05$. Blocks at small slot gaps face low thresholds, making them harder to produce. \emph {(b)}~Levels 1--7: shifted exponential thresholds as a function of base-block gap. The dormant period $\psi = 1$ guarantees zero threshold at gap~1 (burst resistance). Higher levels have larger scale parameters $\sigma _\mu $, rising more slowly. No single gap value simultaneously maximizes all curves}{figure.caption.6}{}}
+\newlabel{fig:thresholds@cref}{{[figure][1][]1}{[1][3][]4}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Slot-Gap Gating}{4}{subsection.3.2}\protected@file@percent }
+\newlabel{sec:gating}{{3.2}{4}{Slot-Gap Gating}{subsection.3.2}{}}
+\newlabel{sec:gating@cref}{{[subsection][2][3]3.2}{[1][3][]4}}
+\newlabel{eq:gating}{{5}{4}{Slot-Gap Gating}{equation.3.5}{}}
+\newlabel{eq:gating@cref}{{[equation][5][]5}{[1][4][]4}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Cumulative Chain Weight}{4}{subsection.3.3}\protected@file@percent }
+\newlabel{sec:weight}{{3.3}{4}{Cumulative Chain Weight}{subsection.3.3}{}}
+\newlabel{sec:weight@cref}{{[subsection][3][3]3.3}{[1][4][]4}}
+\newlabel{eq:weight}{{6}{4}{Cumulative Chain Weight}{equation.3.6}{}}
+\newlabel{eq:weight@cref}{{[equation][6][]6}{[1][4][]4}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces \textbf  {Slot-gap gating mechanism.} \emph  {(a)}~The scaling factor $\min (1, \delta /\gamma )$ as a function of L0 slot gap. Burst-forging blocks (red zone, gap 1--3) receive near-zero scaling. Honest blocks (green zone, gap 5--10) receive partial scaling. Full super-level credit requires gap $\geq \gamma = 15$. \emph  {(b)}~The effective L1 threshold at four slot gaps. A burst block at $\delta =1$ has its L1 threshold reduced to 6.7\% of the ungated value, directly suppressing super-level accumulation.}}{5}{figure.caption.9}\protected@file@percent }
+\newlabel{fig:gating}{{2}{5}{\textbf {Slot-gap gating mechanism.} \emph {(a)}~The scaling factor $\min (1, \delta /\gamma )$ as a function of L0 slot gap. Burst-forging blocks (red zone, gap 1--3) receive near-zero scaling. Honest blocks (green zone, gap 5--10) receive partial scaling. Full super-level credit requires gap $\geq \gamma = 15$. \emph {(b)}~The effective L1 threshold at four slot gaps. A burst block at $\delta =1$ has its L1 threshold reduced to 6.7\% of the ungated value, directly suppressing super-level accumulation}{figure.caption.9}{}}
+\newlabel{fig:gating@cref}{{[figure][2][]2}{[1][4][]5}}
+\@writefile{toc}{\contentsline {paragraph}{The L0 threshold as difficulty.}{5}{section*.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Expected weight per honest block.}{5}{section*.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Chain selection rule.}{5}{section*.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Subchain State in Block Headers}{5}{subsection.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Security Analysis}{6}{section.4}\protected@file@percent }
+\newlabel{sec:security}{{4}{6}{Security Analysis}{section.4}{}}
+\newlabel{sec:security@cref}{{[section][4][]4}{[1][6][]6}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}The Adversary Dilemma}{6}{subsection.4.1}\protected@file@percent }
+\newlabel{thm:dilemma}{{4.1}{6}{The Adversary Dilemma}{subsection.4.1}{}}
+\newlabel{thm:dilemma@cref}{{[subsection][1][4]4.1}{[1][6][]6}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Burst Resistance}{6}{subsection.4.2}\protected@file@percent }
+\newlabel{thm:burst}{{4.2}{6}{Burst Resistance}{subsection.4.2}{}}
+\newlabel{thm:burst@cref}{{[subsection][2][4]4.2}{[1][6][]6}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Slot-Gap Gating Security}{6}{subsection.4.3}\protected@file@percent }
+\newlabel{thm:suppression}{{4.3}{6}{Slot-Gap Gating Security}{subsection.4.3}{}}
+\newlabel{thm:suppression@cref}{{[subsection][3][4]4.3}{[1][6][]6}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Evaluation}{7}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Simulation Setup}{7}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Superblock Density Validation}{7}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Honest vs.\ Adversary Fork Races}{7}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Strategy comparison.}{7}{section*.17}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Fork length dependence.}{7}{section*.18}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Cumulative weight divergence.}{7}{section*.20}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Summary of Results}{7}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Light Client Overhead}{7}{subsection.5.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Fork race results: honest win percentage and weight ratio (honest cumulative weight / adversary cumulative weight) for 50-block races with $\alpha = 2$. Slot-gap gating strengthens honest advantage across all strategies, with the largest improvement at moderate gaps.}}{8}{table.caption.22}\protected@file@percent }
+\newlabel{tab:results}{{2}{8}{Fork race results: honest win percentage and weight ratio (honest cumulative weight / adversary cumulative weight) for 50-block races with $\alpha = 2$. Slot-gap gating strengthens honest advantage across all strategies, with the largest improvement at moderate gaps}{table.caption.22}{}}
+\newlabel{tab:results@cref}{{[table][2][]2}{[1][7][]8}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Discussion}{8}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{The honest-like adversary.}{8}{section*.23}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Choice of $\alpha $.}{8}{section*.24}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Independence vs.\ nesting.}{8}{section*.25}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Relationship to the Taktikos consistency bound.}{8}{section*.26}\protected@file@percent }
+\bibstyle{plain}
+\bibcite{nipopows}{1}
+\bibcite{flyclient}{2}
+\bibcite{taktikos}{3}
+\bibcite{praos}{4}
+\bibcite{ouroboros}{5}
+\bibcite{genesis}{6}
+\@writefile{toc}{\contentsline {paragraph}{Integration cost.}{9}{section*.27}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Conclusion}{9}{section.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {A}Alternative Designs Explored}{9}{appendix.A}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {B}Simulation Implementation}{10}{appendix.B}\protected@file@percent }
+\newlabel{alg:weighted}{{\caption@xref {alg:weighted}{ on input line 225}}{11}{Chain selection rule}{figure.caption.13}{}}
+\newlabel{alg:weighted@cref}{{[subsection][3][3]3.3}{[1][5][]11}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces \textbf  {The adversary dilemma.} Normalized chain growth rate (blue, decreasing) vs.\ weight per block (red, increasing) as a function of production gap. The green curve shows their product---the weight accumulation rate per slot. Burst-forging (gap 1--3) maximizes chain growth but produces near-zero weight per block. The honest mean gap ($\delta \approx 7$) operates near the weight-rate maximum. An adversary cannot simultaneously outpace the honest chain in length \emph  {and} weight.}}{11}{figure.caption.14}\protected@file@percent }
+\newlabel{fig:dilemma}{{3}{11}{\textbf {The adversary dilemma.} Normalized chain growth rate (blue, decreasing) vs.\ weight per block (red, increasing) as a function of production gap. The green curve shows their product---the weight accumulation rate per slot. Burst-forging (gap 1--3) maximizes chain growth but produces near-zero weight per block. The honest mean gap ($\delta \approx 7$) operates near the weight-rate maximum. An adversary cannot simultaneously outpace the honest chain in length \emph {and} weight}{figure.caption.14}{}}
+\newlabel{fig:dilemma@cref}{{[figure][3][]3}{[1][6][]11}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces \textbf  {Super-level hit suppression under slot-gap gating.} Average super-level hits per 50-block race for three strategies: honest (gap $\sim $7), burst adversary (gap 1--2), and moderate adversary (gap 4--7). \emph  {(a)}~Without gating: all strategies achieve identical super-level hit rates---the shifted exponential alone provides no differentiation between honest and moderate adversary timing. \emph  {(b)}~With gating: burst adversary's L1 hits drop from 24.5 to 4.9 ($5\times $ reduction), while honest hits drop only to 14.5 ($1.7\times $ reduction). The moderate adversary is also suppressed relative to honest, closing the ``kink'' in the consistency bound.}}{12}{figure.caption.15}\protected@file@percent }
+\newlabel{fig:suppression}{{4}{12}{\textbf {Super-level hit suppression under slot-gap gating.} Average super-level hits per 50-block race for three strategies: honest (gap $\sim $7), burst adversary (gap 1--2), and moderate adversary (gap 4--7). \emph {(a)}~Without gating: all strategies achieve identical super-level hit rates---the shifted exponential alone provides no differentiation between honest and moderate adversary timing. \emph {(b)}~With gating: burst adversary's L1 hits drop from 24.5 to 4.9 ($5\times $ reduction), while honest hits drop only to 14.5 ($1.7\times $ reduction). The moderate adversary is also suppressed relative to honest, closing the ``kink'' in the consistency bound}{figure.caption.15}{}}
+\newlabel{fig:suppression@cref}{{[figure][4][]4}{[1][7][]12}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces \textbf  {Superblock density validation.} Target vs.\ observed conditional hit rates from 10M-slot simulation (log scale). All levels achieve target rates within 10\%, confirming that the shifted exponential parameterization produces the intended geometric density hierarchy. Level L0 represents base blocks (100\%); each subsequent level halves the rate.}}{12}{figure.caption.16}\protected@file@percent }
+\newlabel{fig:density}{{5}{12}{\textbf {Superblock density validation.} Target vs.\ observed conditional hit rates from 10M-slot simulation (log scale). All levels achieve target rates within 10\%, confirming that the shifted exponential parameterization produces the intended geometric density hierarchy. Level L0 represents base blocks (100\%); each subsequent level halves the rate}{figure.caption.16}{}}
+\newlabel{fig:density@cref}{{[figure][5][]5}{[1][7][]12}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces \textbf  {Fork race results.} \emph  {(a)}~Honest win rate by adversary strategy with $\alpha = 2$ over 50-block races. Blue bars: without gating (shifted exponential only). Orange bars: with slot-gap gating. The green arrow highlights the improvement at moderate gaps from 52\% to 75\%. Burst and fast adversaries are overwhelmingly defeated in both cases. \emph  {(b)}~Honest win rate vs.\ fork length against a burst adversary with gating. Even at 5 blocks, honest wins 98\% of races. At 50+ blocks, honest wins 100\%.}}{13}{figure.caption.19}\protected@file@percent }
+\newlabel{fig:strategies}{{6}{13}{\textbf {Fork race results.} \emph {(a)}~Honest win rate by adversary strategy with $\alpha = 2$ over 50-block races. Blue bars: without gating (shifted exponential only). Orange bars: with slot-gap gating. The green arrow highlights the improvement at moderate gaps from 52\% to 75\%. Burst and fast adversaries are overwhelmingly defeated in both cases. \emph {(b)}~Honest win rate vs.\ fork length against a burst adversary with gating. Even at 5 blocks, honest wins 98\% of races. At 50+ blocks, honest wins 100\%}{figure.caption.19}{}}
+\newlabel{fig:strategies@cref}{{[figure][6][]6}{[1][7][]13}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces \textbf  {Cumulative weight analysis.} \emph  {(a)}~A single 200-block fork race. The honest chain (blue) steadily outpaces the burst adversary (red). The green fill shows the growing weight gap. Honest finishes at $\sim 10\times $ the adversary's cumulative weight. \emph  {(b)}~Per-block weight distributions over 10{,}000 blocks. Honest blocks (blue) cluster around a higher mean, while adversary burst blocks (red) cluster near zero. The distributions have minimal overlap, meaning weight-based chain selection provides strong discrimination.}}{13}{figure.caption.21}\protected@file@percent }
+\newlabel{fig:cumweight}{{7}{13}{\textbf {Cumulative weight analysis.} \emph {(a)}~A single 200-block fork race. The honest chain (blue) steadily outpaces the burst adversary (red). The green fill shows the growing weight gap. Honest finishes at $\sim 10\times $ the adversary's cumulative weight. \emph {(b)}~Per-block weight distributions over 10{,}000 blocks. Honest blocks (blue) cluster around a higher mean, while adversary burst blocks (red) cluster near zero. The distributions have minimal overlap, meaning weight-based chain selection provides strong discrimination}{figure.caption.21}{}}
+\newlabel{fig:cumweight@cref}{{[figure][7][]7}{[1][7][]13}}
+\gdef \@abspage@last{13}
