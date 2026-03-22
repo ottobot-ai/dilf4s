@@ -69,10 +69,10 @@ case class StakerEligibility(
 
 /** Result for a single slot */
 case class SlotResult(
-  slot:            Long,
-  gap:             Long, // slots since last block
-  epoch:           Long,
-  eligibleCount:   Int,
-  eligibilities:   List[StakerEligibility],
-  canonicalLeader: Option[StakerEligibility] // winner after maxvalid-tk tiebreaker
+  slot:          Long,
+  gap:           Long, // slots since last block
+  epoch:         Long,
+  eligibleCount: Int,
+  eligibilities: List[StakerEligibility],
+  isFork:        Boolean // multiple eligible = unresolved fork
 )
