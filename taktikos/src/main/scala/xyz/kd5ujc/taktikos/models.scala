@@ -61,16 +61,45 @@ case class VrfConfig(
 )
 
 // ---------------------------------------------------------------------------
-// NiPoPoW-style superblock levels
+// NiPoPoW-style superblock levels with per-level LDD
 // ---------------------------------------------------------------------------
+
+/**
+ * Shifted exponential configuration for super levels L1-L9.
+ *
+ * threshold(gap) = maxProb × (1 - exp(-(gap - psi) / scale))  if gap >= psi
+ *                = 0                                          if gap < psi
+ *
+ * Where gap = base blocks (L0) since this level last hit.
+ *
+ * Properties:
+ * - psi=1 gives burst resistance: threshold=0 at gap=1
+ * - Exponential form is smooth and monotonically increasing
+ * - maxProb is the asymptotic threshold as gap → ∞
+ * - scale controls how fast the curve rises
+ */
+case class ShiftedExpConfig(
+  level:   Int,
+  psi:     Int,    // Dormant period (burst resistance)
+  maxProb: Double, // Asymptotic probability
+  scale:   Double  // Controls rise steepness
+) {
+  /** Calculate threshold for a given base-block gap. */
+  def threshold(gap: Long): Double =
+    if (gap < psi) 0.0
+    else maxProb * (1.0 - math.exp(-(gap - psi).toDouble / scale))
+}
 
 object SuperLevels {
   /**
    * Superblock levels: L0 (base) through L9.
    *
-   * L0:     LDD snowplow on slot gap (primary chain growth driver)
-   * L1-L3:  Flat conditional probability per base block (1/2, 1/4, 1/8)
-   * L4-L9:  Self-regulating LDD on block-count gap (every 16, 32, 64, 128, 256, 512 blocks)
+   * L0:    LDD snowplow on SLOT gap (primary chain growth, ~14% fill rate)
+   * L1-L9: Shifted exponential on BASE-BLOCK gap (genuine difficulty shaping)
+   *
+   * Key insight: super levels measure gaps in L0 blocks, not slots or parent-level
+   * blocks. This solves the L0-gating frequency problem while maintaining the
+   * target 2x decay between levels.
    */
   val Count: Int = 10
 
@@ -81,7 +110,7 @@ object SuperLevels {
   }
 
   /**
-   * L0 uses LDD snowplow on slot gap (primary chain growth driver).
+   * L0: Standard Taktikos snowplow on slot gap.
    */
   val BaseConfig: VrfConfig = VrfConfig(
     lddCutoff          = 15,
@@ -92,32 +121,45 @@ object SuperLevels {
   )
 
   /**
-   * L1-L9: flat conditional probability per base block.
-   * P(Lμ | L0) = 1 / 2^μ — simple domain-separated coin flip.
+   * L1-L9: Shifted exponential on base-block gaps.
    *
-   *   L1: 1/2   → every 2nd block
-   *   L2: 1/4   → every 4th block
-   *   L3: 1/8   → every 8th block
-   *   L4: 1/16  → every 16th block
-   *   L5: 1/32  → every 32nd block
-   *   L6: 1/64  → every 64th block
-   *   L7: 1/128 → every 128th block
-   *   L8: 1/256 → every 256th block
-   *   L9: 1/512 → every 512th block
+   * These parameters achieve:
+   * - Target rates within 5% mean error
+   * - Perfect burst resistance (threshold=0 at gap=1 for all levels)
+   * - Clean 2x decay: L1 ~ 50%, L2 ~ 25%, L3 ~ 12.5%, ...
+   *
+   * Derived via analytical renewal theory + simulation refinement.
+   * See paper/analysis/RESULTS.md for full derivation.
    */
+  val SuperLevelConfigs: Vector[ShiftedExpConfig] = Vector(
+    ShiftedExpConfig(level = 1, psi = 1, maxProb = 0.990000, scale = 0.1000),
+    ShiftedExpConfig(level = 2, psi = 1, maxProb = 0.511239, scale = 1.9973),
+    ShiftedExpConfig(level = 3, psi = 1, maxProb = 0.215899, scale = 4.0007),
+    ShiftedExpConfig(level = 4, psi = 1, maxProb = 0.111954, scale = 8.0001),
+    ShiftedExpConfig(level = 5, psi = 1, maxProb = 0.047830, scale = 16.0000),
+    ShiftedExpConfig(level = 6, psi = 1, maxProb = 0.023205, scale = 32.0000),
+    ShiftedExpConfig(level = 7, psi = 1, maxProb = 0.015233, scale = 64.0000),
+    ShiftedExpConfig(level = 8, psi = 1, maxProb = 0.006707, scale = 128.0000),
+    ShiftedExpConfig(level = 9, psi = 1, maxProb = 0.002392, scale = 230.4000)
+  )
+
+  // Legacy: flat conditional probabilities (for comparison/fallback)
   val ConditionalProbabilities: Vector[Double] =
     (0 until Count).toVector.map(level => 1.0 / (1 << level))
 
   /**
-   * Per-level subchain entry: (lastHitSlot, height, tipHash).
+   * Per-level subchain entry: (lastHitBaseCount, height, tipHash).
    *
-   * - lastHitSlot: slot of the most recent hit at this level (for gap calculation)
+   * - lastHitBaseCount: L0 block count when this level last hit (for gap calculation)
    * - height: number of blocks in this level's subchain
    * - tipHash: H(block) of the most recent hit (for subchain linking)
+   *
+   * NOTE: Changed from (slot, height, hash) to (baseCount, height, hash) to support
+   * base-block gap measurement for super levels.
    */
   type SubchainEntry = (Long, Long, Array[Byte])
 
-  /** Genesis subchain state: slot=0, height=0, tip=zeros for all levels */
+  /** Genesis subchain state: baseCount=0, height=0, tip=zeros for all levels */
   val GenesisState: Vector[SubchainEntry] =
     Vector.fill(Count)((0L, 0L, new Array[Byte](32)))
 }
