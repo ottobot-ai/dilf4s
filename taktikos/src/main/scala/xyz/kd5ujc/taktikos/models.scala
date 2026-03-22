@@ -51,10 +51,11 @@ case class VrfConfig(
 
 /** Simulation configuration */
 case class SimulationConfig(
-  numStakers: Int,
-  totalSlots: Long,
-  vrfConfig:  VrfConfig,
-  totalStake: Long
+  numStakers:    Int,
+  totalSlots:    Long,
+  slotsPerEpoch: Long,
+  vrfConfig:     VrfConfig,
+  totalStake:    Long
 )
 
 /** Result for a single staker in a single slot */
@@ -68,8 +69,10 @@ case class StakerEligibility(
 
 /** Result for a single slot */
 case class SlotResult(
-  slot:          Long,
-  gap:           Long, // slots since last block
-  eligibleCount: Int,
-  eligibilities: List[StakerEligibility]
+  slot:            Long,
+  gap:             Long, // slots since last block
+  epoch:           Long,
+  eligibleCount:   Int,
+  eligibilities:   List[StakerEligibility],
+  canonicalLeader: Option[StakerEligibility] // winner after maxvalid-tk tiebreaker
 )

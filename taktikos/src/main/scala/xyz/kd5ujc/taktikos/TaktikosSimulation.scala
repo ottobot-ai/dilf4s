@@ -8,15 +8,19 @@ import cats.implicits._
 /**
  * Taktikos leader election simulation.
  *
- * Simulates the PoS leader election from Bifrost/Topl where each staker
+ * Simulates the PoS leader election from Ouroboros Taktikos where each staker
  * checks every slot whether they're eligible to produce a block using
  * a VRF + threshold mechanism (Local Dynamic Difficulty).
+ *
+ * Phase 1: single consistent view with maxvalid-tk tiebreaker (lowest test value wins).
+ * No networking — all peers compute the same deterministic result.
  */
 object TaktikosSimulation extends IOApp.Simple {
 
   val config: SimulationConfig = SimulationConfig(
-    numStakers = 5,
-    totalSlots = 100,
+    numStakers    = 5,
+    totalSlots    = 1000,
+    slotsPerEpoch = 100,
     vrfConfig = VrfConfig(
       lddCutoff          = 15,
       precision          = 40,
@@ -31,39 +35,31 @@ object TaktikosSimulation extends IOApp.Simple {
 
   def run: IO[Unit] =
     for {
-      // Initialize stakers with random VRF keys and assigned stake
       stakers <- initializeStakers(config)
 
-      // Genesis eta - Blake2b-256 of seed string
-      eta = Eta(LeaderElection.blake2b256("taktikos-genesis-eta".getBytes("UTF-8")))
+      genesisEta = Eta(LeaderElection.blake2b256("taktikos-genesis-eta".getBytes("UTF-8")))
 
-      // Print header
       _ <- IO.println(
         s"Starting Taktikos simulation with ${config.numStakers} stakers over ${config.totalSlots} slots"
       )
-      _ <- IO.println(s"Stake distribution: ${stakers.map(s => s"Staker${s.id}=${s.stake}").mkString(", ")}")
+      _ <- IO.println(s"Stake distribution: ${stakers.map(s => s"S${s.id}=${s.stake}").mkString(", ")}")
       _ <- IO.println(
         s"VRF Config: lddCutoff=${config.vrfConfig.lddCutoff}, " +
-        s"baselineDifficulty=${config.vrfConfig.baselineDifficulty}, " +
-        s"amplitude=${config.vrfConfig.amplitude}"
+        s"baseline=${config.vrfConfig.baselineDifficulty}, " +
+        s"amplitude=${config.vrfConfig.amplitude}, " +
+        s"slotsPerEpoch=${config.slotsPerEpoch}"
       )
       _ <- IO.println("---")
 
-      // Run simulation
-      results <- simulateSlots(stakers, config, eta)
+      results <- simulateSlots(stakers, config, genesisEta)
 
-      // Print summary
       _ <- printSummary(results, stakers, config)
     } yield ()
 
-  /**
-   * Initialize stakers with random VRF keys and pre-defined stake distribution.
-   */
   def initializeStakers(config: SimulationConfig): IO[List[Staker]] = IO {
     val random = new SecureRandom()
-
     (0 until config.numStakers).toList.map { id =>
-      val sk = new Array[Byte](32)
+      val sk    = new Array[Byte](32)
       random.nextBytes(sk)
       val vk    = LeaderElection.deriveVrfVK(sk)
       val stake = stakeDistribution(id)
@@ -71,111 +67,156 @@ object TaktikosSimulation extends IOApp.Simple {
     }
   }
 
-  /**
-   * Simulate all slots and collect results.
-   */
   def simulateSlots(
-    stakers: List[Staker],
-    config:  SimulationConfig,
-    eta:     Eta
+    stakers:    List[Staker],
+    config:     SimulationConfig,
+    genesisEta: Eta
   ): IO[List[SlotResult]] =
     for {
-      // Track last block slot for LDD calculation (start at 0 = genesis)
       lastBlockSlotRef <- Ref.of[IO, Long](0L)
+      etaRef           <- Ref.of[IO, Eta](genesisEta)
+      epochRef         <- Ref.of[IO, Long](0L)
+      // Accumulate rho nonce hashes for eta calculation
+      rhoNoncesRef     <- Ref.of[IO, List[Array[Byte]]](Nil)
+
       results <- (1L to config.totalSlots).toList.traverse { slot =>
         for {
           lastBlockSlot <- lastBlockSlotRef.get
+          eta           <- etaRef.get
+          currentEpoch  <- epochRef.get
           slotDiff       = slot - lastBlockSlot
+          newEpoch       = (slot - 1) / config.slotsPerEpoch
 
-          // Check eligibility for all stakers
+          // Epoch transition
+          _ <- if (newEpoch > currentEpoch) {
+            for {
+              nonces     <- rhoNoncesRef.get
+              previousEta <- etaRef.get
+              nextEta     = LeaderElection.computeNextEta(previousEta, newEpoch, nonces.reverse)
+              _          <- etaRef.set(nextEta)
+              _          <- epochRef.set(newEpoch)
+              _          <- rhoNoncesRef.set(Nil)
+              _          <- IO.println(f"  *** Epoch $newEpoch%2d (slot $slot%4d) — eta rotated ***")
+            } yield ()
+          } else IO.unit
+
+          activeEta <- etaRef.get
+
+          // Check all stakers
           eligibilities = stakers.map { staker =>
-            LeaderElection.checkEligibility(
-              staker,
-              slot,
-              slotDiff,
-              eta,
-              config.totalStake,
-              config.vrfConfig
-            )
+            LeaderElection.checkEligibility(staker, slot, slotDiff, activeEta, config.totalStake, config.vrfConfig)
           }
 
-          eligibleStakers = eligibilities.filter(_.isEligible)
-          result          = SlotResult(slot, slotDiff, eligibleStakers.size, eligibilities)
+          eligible = eligibilities.filter(_.isEligible)
+          // maxvalid-tk tiebreaker: lowest test value wins
+          canonical = LeaderElection.selectCanonicalLeader(eligible)
 
-          // If any staker elected, update lastBlockSlot
-          _ <- if (eligibleStakers.nonEmpty) lastBlockSlotRef.set(slot) else IO.unit
+          result = SlotResult(slot, slotDiff, newEpoch, eligible.size, eligibilities, canonical)
 
-          // Print slot result
+          // Update state
+          _ <- if (canonical.isDefined) lastBlockSlotRef.set(slot) else IO.unit
+
+          // Accumulate rho nonce hashes from canonical leader (or first eligible)
+          _ <- canonical.traverse_ { leader =>
+            val rho = LeaderElection.rhoForSlot(
+              stakers.find(_.id == leader.stakerId).get.vrfSK, slot, activeEta
+            )
+            rhoNoncesRef.update(LeaderElection.rhoNonceHash(rho) :: _)
+          }
+
           _ <- printSlotResult(result)
         } yield result
       }
     } yield results
 
-  /**
-   * Print result for a single slot.
-   */
   def printSlotResult(result: SlotResult): IO[Unit] = {
-    val slotStr = f"Slot ${result.slot}%3d"
-    val gapStr  = f"[gap=${result.gap}%2d]"
-
     val eligible = result.eligibilities.filter(_.isEligible)
 
-    val msg = eligible match {
+    // Only print interesting slots: elections and long gaps
+    eligible match {
       case Nil =>
-        val maxThreshold = result.eligibilities.map(_.threshold).maxOption.getOrElse(0.0)
-        f"No leader (max threshold: $maxThreshold%.4f)"
+        // Print every 50th empty slot or when gap hits baseline threshold
+        if (result.gap == result.eligibilities.headOption.map(_ =>
+            result.eligibilities.head.threshold).map(_ => 16L).getOrElse(16L) ||
+            result.slot % 100 == 0)
+          IO.println(f"Slot ${result.slot}%4d: [gap=${result.gap}%2d] No leader (max threshold: ${result.eligibilities.map(_.threshold).max}%.4f)")
+        else IO.unit
 
-      case single :: Nil =>
-        f"Staker${single.stakerId} ELECTED (threshold=${single.threshold}%.4f, " +
-        f"test=${single.testValue}%.4f, stake=${single.stakePercent}%.1f%%)"
+      case _ :: Nil =>
+        val w = result.canonicalLeader.get
+        IO.println(f"Slot ${result.slot}%4d: [gap=${result.gap}%2d] S${w.stakerId} elected (thr=${w.threshold}%.4f test=${w.testValue}%.4f stake=${w.stakePercent}%.0f%%)")
 
-      case multiple =>
-        multiple.map { e =>
-          f"Staker${e.stakerId}"
-        }.mkString(", ") + " (fork potential!)"
+      case multi =>
+        val w = result.canonicalLeader.get
+        val others = multi.filterNot(_.stakerId == w.stakerId).map(e => s"S${e.stakerId}").mkString(",")
+        IO.println(f"Slot ${result.slot}%4d: [gap=${result.gap}%2d] S${w.stakerId} elected [tiebreak over $others] (thr=${w.threshold}%.4f test=${w.testValue}%.4f)")
     }
-
-    IO.println(s"$slotStr: $gapStr $msg")
   }
 
-  /**
-   * Print final summary statistics.
-   */
   def printSummary(
     results: List[SlotResult],
     stakers: List[Staker],
     config:  SimulationConfig
   ): IO[Unit] = {
-    val blocksProduced = results.count(_.eligibleCount > 0)
-    val emptySlots     = results.count(_.eligibleCount == 0)
+    val totalSlots     = results.size
+    val blocksProduced = results.count(_.canonicalLeader.isDefined)
+    val emptySlots     = totalSlots - blocksProduced
     val multiLeader    = results.count(_.eligibleCount > 1)
+    val numEpochs      = results.last.epoch + 1
 
-    // Count blocks per staker (using first eligible when multiple)
+    // Count blocks per staker (canonical only)
     val blocksByStaker = results
-      .flatMap(_.eligibilities.filter(_.isEligible).headOption)
+      .flatMap(_.canonicalLeader)
       .groupBy(_.stakerId)
-      .view
-      .mapValues(_.size)
-      .toMap
+      .view.mapValues(_.size).toMap
 
-    // Calculate average gap between blocks
-    val gaps = results.filter(_.eligibleCount > 0).map(_.gap)
-    val avgGap = if (gaps.nonEmpty) gaps.sum.toDouble / gaps.size else 0.0
+    // Slot gap distribution
+    val gaps = results.filter(_.canonicalLeader.isDefined).map(_.gap)
+    val avgGap    = if (gaps.nonEmpty) gaps.sum.toDouble / gaps.size else 0.0
+    val medianGap = if (gaps.nonEmpty) { val s = gaps.sorted; s(s.size / 2) } else 0L
+    val maxGap    = gaps.maxOption.getOrElse(0L)
+    val minGap    = gaps.minOption.getOrElse(0L)
+    val p99Gap    = if (gaps.nonEmpty) { val s = gaps.sorted; s((s.size * 0.99).toInt.min(s.size - 1)) } else 0L
+
+    // Blocks per epoch
+    val blocksPerEpoch = results
+      .filter(_.canonicalLeader.isDefined)
+      .groupBy(_.epoch)
+      .view.mapValues(_.size).toMap
+
+    val fillRate = blocksProduced.toDouble / totalSlots * 100
 
     for {
       _ <- IO.println("")
-      _ <- IO.println("=== SUMMARY ===")
-      _ <- IO.println(s"Total slots: ${config.totalSlots}")
-      _ <- IO.println(s"Blocks produced: $blocksProduced")
-      _ <- IO.println(s"Empty slots: $emptySlots")
+      _ <- IO.println("=" * 60)
+      _ <- IO.println("  TAKTIKOS SIMULATION SUMMARY")
+      _ <- IO.println("=" * 60)
+      _ <- IO.println(f"Total slots:      $totalSlots%d")
+      _ <- IO.println(f"Blocks produced:  $blocksProduced%d ($fillRate%.1f%% fill rate)")
+      _ <- IO.println(f"Empty slots:      $emptySlots%d")
+      _ <- IO.println(f"Multi-eligible:   $multiLeader%d (resolved by tiebreaker)")
+      _ <- IO.println(f"Epochs:           $numEpochs%d")
+      _ <- IO.println("")
+      _ <- IO.println("--- Slot Gap Statistics ---")
+      _ <- IO.println(f"  Mean:   $avgGap%.2f slots")
+      _ <- IO.println(f"  Median: $medianGap%d slots")
+      _ <- IO.println(f"  Min:    $minGap%d  Max: $maxGap%d  P99: $p99Gap%d")
+      _ <- IO.println("")
+      _ <- IO.println("--- Block Production by Staker ---")
       _ <- stakers.traverse_ { s =>
         val blocks     = blocksByStaker.getOrElse(s.id, 0)
         val pct        = if (blocksProduced > 0) blocks.toDouble / blocksProduced * 100 else 0.0
         val stakeRatio = s.stake.toDouble / config.totalStake * 100
-        IO.println(f"Staker${s.id} ($stakeRatio%.1f%% stake): $blocks%2d blocks ($pct%.1f%%)")
+        IO.println(f"  S${s.id} ($stakeRatio%.0f%% stake): $blocks%3d blocks ($pct%.1f%% of total)")
       }
-      _ <- IO.println(s"Multi-leader slots: $multiLeader (fork potential)")
-      _ <- IO.println(f"Average slot gap between blocks: $avgGap%.2f")
+      _ <- IO.println("")
+      _ <- IO.println("--- Blocks per Epoch ---")
+      _ <- (0L until numEpochs).toList.traverse_ { e =>
+        val blocks = blocksPerEpoch.getOrElse(e, 0)
+        val bar    = "█" * (blocks / 2).max(1)
+        IO.println(f"  Epoch $e%2d: $blocks%3d blocks $bar")
+      }
+      _ <- IO.println("=" * 60)
     } yield ()
   }
 }

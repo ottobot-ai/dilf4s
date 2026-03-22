@@ -121,4 +121,33 @@ object LeaderElection {
       stakePercent = relativeStake * 100.0
     )
   }
+
+  /**
+   * maxvalid-tk tiebreaker: among eligible stakers in the same slot,
+   * pick the one with the lowest VRF test value.
+   *
+   * Since all peers can independently compute every staker's VRF output
+   * for a given (slot, eta), this is deterministic — no communication needed.
+   */
+  def selectCanonicalLeader(eligible: List[StakerEligibility]): Option[StakerEligibility] =
+    eligible match {
+      case Nil      => None
+      case nonEmpty => Some(nonEmpty.minBy(_.testValue))
+    }
+
+  /**
+   * Compute next epoch eta from previous eta and the rho nonce hashes
+   * accumulated during the epoch.
+   *
+   * nextEta = Blake2b-256(previousEta ++ epoch bytes ++ concat(rhoNonceHashes))
+   * where rhoNonceHash = Blake2b-512(rho.bytes ++ "NONCE")
+   */
+  def rhoNonceHash(rho: Rho): Array[Byte] =
+    blake2b512(rho.bytes ++ "NONCE".getBytes("UTF-8"))
+
+  def computeNextEta(previousEta: Eta, epoch: Long, rhoNonceHashes: List[Array[Byte]]): Eta = {
+    val epochBytes = BigInt(epoch).toByteArray
+    val payload    = previousEta.bytes ++ epochBytes ++ rhoNonceHashes.flatten
+    Eta(blake2b256(payload))
+  }
 }
