@@ -70,7 +70,7 @@ lazy val root = project.in(file("."))
     commonSettings,
     publish / skip := true
   )
-  .aggregate(models, sharedTest, core, accumulators, storage, signing, vrf, kes)
+  .aggregate(models, sharedTest, core, accumulators, storage, signing, vrf, kes, taktikos)
 
 // ─── Models: cross-cutting value types ───
 lazy val models = project.in(file("models"))
@@ -198,6 +198,21 @@ lazy val kes = project.in(file("kes"))
     )
   )
   .dependsOn(models, signing, core, sharedTest % Test)
+
+// ─── Taktikos: Leader Election Simulation ───
+lazy val taktikos = project.in(file("taktikos"))
+  .settings(
+    name := "dilf4s-taktikos",
+    commonSettings,
+    commonTestSettings,
+    libraryDependencies ++= Seq(
+      Libraries.catsEffect,
+      Libraries.bc,
+      Libraries.log4cats,
+      Libraries.logback % Runtime,
+    )
+  )
+  .dependsOn(models, core, signing, vrf, kes, sharedTest % Test)
 
 addCommandAlias("checkPR", s"; scalafixAll --check; scalafmtCheckAll")
 addCommandAlias("preparePR", s"; scalafixAll; scalafmtAll")
