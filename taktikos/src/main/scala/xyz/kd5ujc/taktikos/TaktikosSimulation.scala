@@ -1,23 +1,21 @@
 package xyz.kd5ujc.taktikos
 
 import java.security.SecureRandom
+import java.util.HexFormat
 
 import cats.effect.{IO, IOApp, Ref}
 import cats.implicits._
 
 /**
- * Taktikos leader election simulation — Phase 1.
+ * Taktikos leader election simulation — Phase 1 with NiPoPoW-style superblocks.
  *
- * Simulates the PoS leader election from Ouroboros Taktikos where each staker
- * checks every slot whether they're eligible to produce a block using
- * a VRF + threshold mechanism (Local Dynamic Difficulty).
+ * Each block that passes the base (level-0) eligibility test is also checked
+ * against 4 additional, independently parameterized LDD curves (levels 1..4)
+ * with domain-separated hashes. Blocks form embedded subchains at each level.
  *
- * Phase 1: no chain, no networking. Multi-eligible slots are genuine forks —
- * they can only be resolved by maxvalid-tk chain selection in Phase 2:
- *   - Longer chain wins
- *   - Equal length → lower head slot wins
- *
- * For now we track fork slots and report them as unresolved.
+ * Block headers track subchain state as Vector[(height, tipHash)] —
+ * coupled tuples, one per level. On a hit, height increments and tipHash = H(this).
+ * On a miss, the tuple carries forward unchanged.
  */
 object TaktikosSimulation extends IOApp.Simple {
 
@@ -25,17 +23,13 @@ object TaktikosSimulation extends IOApp.Simple {
     numStakers    = 5,
     totalSlots    = 1000,
     slotsPerEpoch = 100,
-    vrfConfig = VrfConfig(
-      lddCutoff          = 15,
-      precision          = 40,
-      baselineDifficulty = Ratio(1, 20),
-      amplitude          = Ratio(1, 2)
-    ),
-    totalStake = 10000
+    vrfConfig     = SuperLevels.BaseConfig,
+    totalStake    = 10000
   )
 
-  // Stake distribution: 30/25/20/15/10 split
   val stakeDistribution: List[Long] = List(3000L, 2500L, 2000L, 1500L, 1000L)
+
+  private val hex = HexFormat.of()
 
   def run: IO[Unit] =
     for {
@@ -43,16 +37,13 @@ object TaktikosSimulation extends IOApp.Simple {
 
       genesisEta = Eta(LeaderElection.blake2b256("taktikos-genesis-eta".getBytes("UTF-8")))
 
-      _ <- IO.println(
-        s"Starting Taktikos simulation with ${config.numStakers} stakers over ${config.totalSlots} slots"
-      )
-      _ <- IO.println(s"Stake distribution: ${stakers.map(s => s"S${s.id}=${s.stake}").mkString(", ")}")
-      _ <- IO.println(
-        s"VRF Config: lddCutoff=${config.vrfConfig.lddCutoff}, " +
-        s"baseline=${config.vrfConfig.baselineDifficulty}, " +
-        s"amplitude=${config.vrfConfig.amplitude}, " +
-        s"slotsPerEpoch=${config.slotsPerEpoch}"
-      )
+      _ <- IO.println(s"Starting Taktikos simulation with ${config.numStakers} stakers, ${config.totalSlots} slots")
+      _ <- IO.println(s"Stake: ${stakers.map(s => s"S${s.id}=${s.stake}").mkString(", ")}")
+      _ <- IO.println(s"Super-levels: ${SuperLevels.Count} (domains: ${SuperLevels.Domains.mkString(", ")})")
+      _ <- IO.println(s"Base LDD: amplitude=${SuperLevels.BaseConfig.amplitude}, baseline=${SuperLevels.BaseConfig.baselineDifficulty}")
+      _ <- SuperLevels.LevelConfigs.zipWithIndex.toList.traverse_ { case (c, i) =>
+        IO.println(f"  Level $i: ψ=${c.offset}%3d  γ=${c.lddCutoff}%3d  (ramp ${c.offset}%d–${c.lddCutoff}%d)")
+      }
       _ <- IO.println("---")
 
       results <- simulateSlots(stakers, config, genesisEta)
@@ -63,12 +54,20 @@ object TaktikosSimulation extends IOApp.Simple {
   def initializeStakers(config: SimulationConfig): IO[List[Staker]] = IO {
     val random = new SecureRandom()
     (0 until config.numStakers).toList.map { id =>
-      val sk    = new Array[Byte](32)
+      val sk = new Array[Byte](32)
       random.nextBytes(sk)
-      val vk    = LeaderElection.deriveVrfVK(sk)
-      val stake = stakeDistribution(id)
-      Staker(id, sk, vk, stake)
+      val vk = LeaderElection.deriveVrfVK(sk)
+      Staker(id, sk, vk, stakeDistribution(id))
     }
+  }
+
+  /**
+   * Simple block hash: Blake2b-256(slot bytes ++ staker id byte ++ parent subchain tips).
+   * Good enough for the simulation — deterministic from the chain state.
+   */
+  def computeBlockHash(slot: Long, stakerId: Int, subchains: Vector[SuperLevels.SubchainEntry]): Array[Byte] = {
+    val payload = BigInt(slot).toByteArray ++ Array(stakerId.toByte) ++ subchains.flatMap(_._3)
+    LeaderElection.blake2b256(payload)
   }
 
   def simulateSlots(
@@ -77,17 +76,15 @@ object TaktikosSimulation extends IOApp.Simple {
     genesisEta: Eta
   ): IO[List[SlotResult]] =
     for {
-      lastBlockSlotRef <- Ref.of[IO, Long](0L)
       etaRef           <- Ref.of[IO, Eta](genesisEta)
       epochRef         <- Ref.of[IO, Long](0L)
       rhoNoncesRef     <- Ref.of[IO, List[Array[Byte]]](Nil)
+      subchainsRef     <- Ref.of[IO, Vector[SuperLevels.SubchainEntry]](SuperLevels.GenesisState)
 
       results <- (1L to config.totalSlots).toList.traverse { slot =>
         for {
-          lastBlockSlot <- lastBlockSlotRef.get
-          currentEpoch  <- epochRef.get
-          slotDiff       = slot - lastBlockSlot
-          newEpoch       = (slot - 1) / config.slotsPerEpoch
+          currentEpoch <- epochRef.get
+          newEpoch      = (slot - 1) / config.slotsPerEpoch
 
           // Epoch transition
           _ <- if (newEpoch > currentEpoch) {
@@ -102,24 +99,40 @@ object TaktikosSimulation extends IOApp.Simple {
             } yield ()
           } else IO.unit
 
-          activeEta <- etaRef.get
+          activeEta        <- etaRef.get
+          currentSubchains <- subchainsRef.get
 
-          // Check all stakers
+          // Base gap for display (from subchain level-0 last hit slot)
+          baseGap = slot - currentSubchains(0)._1
+
+          // Check all stakers at ALL levels (independent, every slot)
           eligibilities = stakers.map { staker =>
-            LeaderElection.checkEligibility(staker, slot, slotDiff, activeEta, config.totalStake, config.vrfConfig)
+            LeaderElection.checkEligibilityAllLevels(staker, slot, currentSubchains, activeEta, config.totalStake)
           }
 
-          eligible = eligibilities.filter(_.isEligible)
+          eligible = eligibilities.filter(_.isEligible) // base-eligible (L0 hit)
           isFork   = eligible.size > 1
 
-          result = SlotResult(slot, slotDiff, newEpoch, eligible.size, eligibilities, isFork)
+          // Merge level hits from all stakers for subchain update
+          // (any staker hitting any level counts — in Phase 2, only canonical block's hits count)
+          allLevelHits = eligibilities.map(_.levelHits)
+            .foldLeft(Vector.fill(SuperLevels.Count)(false)) { (acc, hits) =>
+              acc.zip(hits).map { case (a, b) => a || b }
+            }
 
-          // Any eligible staker means a block was produced (advances the chain)
-          // In a fork, BOTH produce blocks — gap resets either way
-          _ <- if (eligible.nonEmpty) lastBlockSlotRef.set(slot) else IO.unit
+          // Update subchain state for ALL level hits (not just base blocks)
+          newSubchains <- if (allLevelHits.exists(identity)) {
+            val blockHash = eligible.headOption match {
+              case Some(leader) => computeBlockHash(slot, leader.stakerId, currentSubchains)
+              case None         => LeaderElection.blake2b256(BigInt(slot).toByteArray) // super-only hit
+            }
+            val updated = LeaderElection.updateSubchains(currentSubchains, slot, blockHash, allLevelHits)
+            subchainsRef.set(updated) *> IO.pure(updated)
+          } else IO.pure(currentSubchains)
 
-          // Accumulate rho nonce hashes from ALL eligible stakers
-          // (in Phase 2, only the canonical chain's blocks contribute to eta)
+          result = SlotResult(slot, baseGap, newEpoch, eligible.size, eligibilities, isFork, newSubchains)
+
+          // Accumulate rho nonce hashes
           _ <- eligible.traverse_ { leader =>
             val rho = LeaderElection.rhoForSlot(
               stakers.find(_.id == leader.stakerId).get.vrfSK, slot, activeEta
@@ -137,19 +150,38 @@ object TaktikosSimulation extends IOApp.Simple {
 
     eligible match {
       case Nil =>
-        // Only print milestone empty slots
         if (result.slot % 100 == 0)
-          IO.println(f"Slot ${result.slot}%4d: [gap=${result.gap}%2d] No leader (max thr: ${result.eligibilities.map(_.threshold).max}%.4f)")
+          IO.println(f"Slot ${result.slot}%4d: [gap=${result.gap}%2d] — empty")
         else IO.unit
 
       case single :: Nil =>
-        IO.println(f"Slot ${result.slot}%4d: [gap=${result.gap}%2d] S${single.stakerId} elected (thr=${single.threshold}%.4f test=${single.testValue}%.4f stake=${single.stakePercent}%.0f%%)")
+        val hits = levelHitString(single.levelHits)
+        IO.println(
+          f"Slot ${result.slot}%4d: [gap=${result.gap}%2d] S${single.stakerId} " +
+          f"$hits heights=${heightString(result.subchains)}"
+        )
 
       case multi =>
-        val names = multi.map(e => f"S${e.stakerId}").mkString(", ")
-        IO.println(f"Slot ${result.slot}%4d: [gap=${result.gap}%2d] ⚡ FORK — $names all eligible (needs chain selection to resolve)")
+        val names = multi.map { e =>
+          val hits = levelHitString(e.levelHits)
+          s"S${e.stakerId}$hits"
+        }.mkString(", ")
+        IO.println(
+          f"Slot ${result.slot}%4d: [gap=${result.gap}%2d] ⚡ FORK — $names " +
+          f"heights=${heightString(result.subchains)}"
+        )
     }
   }
+
+  /** Format level hits as e.g. "[0,2,4]" showing which levels were hit */
+  def levelHitString(hits: Vector[Boolean]): String = {
+    val levels = hits.zipWithIndex.collect { case (true, i) => i.toString }
+    s"L[${levels.mkString(",")}]"
+  }
+
+  /** Format subchain heights as e.g. "[145,73,38,18,10]" */
+  def heightString(subchains: Vector[SuperLevels.SubchainEntry]): String =
+    s"[${subchains.map(_._2).mkString(",")}]"
 
   def printSummary(
     results: List[SlotResult],
@@ -163,7 +195,6 @@ object TaktikosSimulation extends IOApp.Simple {
     val forkSlots      = results.count(_.isFork)
     val numEpochs      = results.last.epoch + 1
 
-    // Count blocks per staker (every eligible staker produces a block)
     val blocksByStaker = results
       .flatMap(_.eligibilities.filter(_.isEligible))
       .groupBy(_.stakerId)
@@ -171,41 +202,37 @@ object TaktikosSimulation extends IOApp.Simple {
 
     val totalBlocks = blocksByStaker.values.sum
 
-    // Slot gap distribution (gap to previous block-producing slot)
-    val gaps = results.filter(_.eligibleCount > 0).map(_.gap)
+    // Gap stats
+    val gaps      = results.filter(_.eligibleCount > 0).map(_.gap)
     val avgGap    = if (gaps.nonEmpty) gaps.sum.toDouble / gaps.size else 0.0
     val medianGap = if (gaps.nonEmpty) { val s = gaps.sorted; s(s.size / 2) } else 0L
     val maxGap    = gaps.maxOption.getOrElse(0L)
-    val minGap    = gaps.minOption.getOrElse(0L)
-    val p99Gap    = if (gaps.nonEmpty) { val s = gaps.sorted; s((s.size * 0.99).toInt.min(s.size - 1)) } else 0L
 
-    // Blocks per epoch
-    val blocksPerEpoch = results
-      .filter(_.eligibleCount > 0)
-      .groupBy(_.epoch)
-      .view.mapValues(_.size).toMap
+    // Final subchain state
+    val finalSubchains = results.last.subchains
+
+    // Per-level hit counts from final subchain heights (accurate, includes non-block-slot hits)
+    val levelHitCounts = finalSubchains.map(_._2.toInt)
 
     val fillRate = slotsWithBlock.toDouble / totalSlots * 100
 
     for {
       _ <- IO.println("")
-      _ <- IO.println("=" * 60)
-      _ <- IO.println("  TAKTIKOS SIMULATION SUMMARY")
-      _ <- IO.println("=" * 60)
+      _ <- IO.println("=" * 70)
+      _ <- IO.println("  TAKTIKOS SIMULATION SUMMARY (with NiPoPoW Superblocks)")
+      _ <- IO.println("=" * 70)
       _ <- IO.println(f"Total slots:       $totalSlots%d")
       _ <- IO.println(f"Slots with blocks: $slotsWithBlock%d ($fillRate%.1f%% fill rate)")
       _ <- IO.println(f"  Single leader:   $singleLeader%d")
-      _ <- IO.println(f"  Fork (multi):    $forkSlots%d ← needs maxvalid-tk to resolve")
+      _ <- IO.println(f"  Fork (multi):    $forkSlots%d")
       _ <- IO.println(f"Empty slots:       $emptySlots%d")
       _ <- IO.println(f"Epochs:            $numEpochs%d")
       _ <- IO.println(f"Total blocks:      $totalBlocks%d (includes fork duplicates)")
       _ <- IO.println("")
       _ <- IO.println("--- Slot Gap Statistics ---")
-      _ <- IO.println(f"  Mean:   $avgGap%.2f slots")
-      _ <- IO.println(f"  Median: $medianGap%d slots")
-      _ <- IO.println(f"  Min:    $minGap%d  Max: $maxGap%d  P99: $p99Gap%d")
+      _ <- IO.println(f"  Mean: $avgGap%.2f | Median: $medianGap%d | Max: $maxGap%d")
       _ <- IO.println("")
-      _ <- IO.println("--- Block Production by Staker (all eligibilities) ---")
+      _ <- IO.println("--- Block Production by Staker ---")
       _ <- stakers.traverse_ { s =>
         val blocks     = blocksByStaker.getOrElse(s.id, 0)
         val pct        = if (totalBlocks > 0) blocks.toDouble / totalBlocks * 100 else 0.0
@@ -213,22 +240,41 @@ object TaktikosSimulation extends IOApp.Simple {
         IO.println(f"  S${s.id} ($stakeRatio%.0f%% stake): $blocks%3d blocks ($pct%.1f%%)")
       }
       _ <- IO.println("")
-      _ <- IO.println("--- Blocks per Epoch (slots with ≥1 leader) ---")
-      _ <- (0L until numEpochs).toList.traverse_ { e =>
-        val blocks = blocksPerEpoch.getOrElse(e, 0)
-        val bar    = "█" * (blocks / 2).max(1)
-        IO.println(f"  Epoch $e%2d: $blocks%3d $bar")
+      _ <- IO.println("--- Superblock Level Analysis ---")
+      _ <- IO.println(f"  ${"Level"}%-8s ${"Hits"}%6s ${"Rate"}%8s ${"Avg Gap"}%10s ${"Target Gap"}%12s ${"Domain"}%-10s")
+      _ <- IO.println("  " + "-" * 58)
+      _ <- (0 until SuperLevels.Count).toList.traverse_ { level =>
+        val hits = levelHitCounts(level)
+        val rate = if (totalSlots > 0) hits.toDouble / totalSlots * 100 else 0.0
+        val avgLevelGap = if (hits > 0) totalSlots.toDouble / hits else 0.0
+        val targetGap = 7 * math.pow(2.0, level.toDouble).toInt
+        IO.println(f"  Level $level%-3d $hits%6d $rate%7.1f%% $avgLevelGap%9.1f $targetGap%10d   ${SuperLevels.Domains(level)}%-10s")
+      }
+      _ <- IO.println("")
+      _ <- IO.println("--- Final Subchain State (lastSlot, height, tipHash) ---")
+      _ <- finalSubchains.zipWithIndex.toList.traverse_ { case ((lastSlot, height, tip), level) =>
+        val tipHex = hex.formatHex(tip).take(16)
+        IO.println(f"  Level $level: slot=$lastSlot%4d  height=$height%4d  tip=$tipHex...")
+      }
+      _ <- IO.println("")
+      _ <- IO.println("--- Superblock Distribution Histogram ---")
+      _ <- (0 until SuperLevels.Count).toList.traverse_ { level =>
+        val hits = levelHitCounts(level)
+        val bar  = "█" * (hits / 3).max(1)
+        IO.println(f"  L$level: $hits%4d $bar")
       }
       _ <- IO.println("")
       _ <- IO.println("--- Fork Analysis ---")
       _ <- if (forkSlots > 0) {
-        val forkResults = results.filter(_.isFork)
+        val forkResults = results.filter(_.isFork).take(20) // cap at 20 for readability
         forkResults.traverse_ { r =>
-          val names = r.eligibilities.filter(_.isEligible).map(e => f"S${e.stakerId}(test=${e.testValue}%.4f)").mkString(", ")
+          val names = r.eligibilities.filter(_.isEligible)
+            .map(e => s"S${e.stakerId}${levelHitString(e.levelHits)}")
+            .mkString(", ")
           IO.println(f"  Slot ${r.slot}%4d [gap=${r.gap}%2d]: $names")
-        }
-      } else IO.println("  No forks in this run!")
-      _ <- IO.println("=" * 60)
+        } *> (if (forkSlots > 20) IO.println(s"  ... and ${forkSlots - 20} more") else IO.unit)
+      } else IO.println("  No forks!")
+      _ <- IO.println("=" * 70)
     } yield ()
   }
 }
