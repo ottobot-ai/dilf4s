@@ -39,7 +39,7 @@ Non-Interactive Proofs of Proof-of-Work (NIPoPoWs) exploit a natural property of
 
 It is demonstrated that \emph{local dynamic difficulty} (LDD), introduced in Ouroboros Taktikos for throughput optimization, resolves this barrier. The slot-gap-dependent threshold of LDD creates a difficulty gradient analogous to PoW: blocks produced at larger slot gaps satisfy higher thresholds and are more difficult to forge. This gradient is leveraged to construct a \emph{weighted superblock hierarchy} for PoS through three mechanisms: (1)~domain-separated multi-level eligibility tests with shifted exponential threshold functions, (2)~\emph{slot-gap gating} that couples super-level credit to LDD timing, and (3)~\emph{cumulative chain weight} using the LDD threshold as the PoS analog of hash difficulty. The key insight is that \textbf{LDD simultaneously serves two purposes}: it improves throughput (its original design goal) and it provides the difficulty gradient that makes superblock proofs possible.
 
-This construction is shown to be \emph{not portable} to flat-threshold protocols: under Praos-style constant thresholds, honest chains win only 69\% of fork races against moderate adversaries (versus 98\% under Taktikos LDD). The 47$\times$ range in per-block weight contribution created by LDD is the mechanism that makes superblock security viable. Validation through 10M-slot simulation confirms that superblock densities match target rates within 10\% at all levels, and that honest chains accumulate weight $10\text{--}100\times$ faster than burst-forging adversaries.
+This construction is shown to be \emph{not portable} to flat-threshold protocols: under Praos-style constant thresholds, honest chains win only 69\% of fork races against moderate adversaries (versus 98\% under Taktikos LDD). The 47$\times$ range in per-block weight contribution created by LDD is the mechanism that makes superblock security viable. Validation through simulation confirms superblock densities match target rates at all levels. A separation theorem is established: LDD gating asymmetry improves the single-chain consistency bound by approximately 20\% over static PoS (approaching the PoW bound under pure ramp weighting), while cumulative weighting enables NIPoPoW-style proofs but is shown to be independent of---and in tension with---grinding resistance. The security architecture is clarified: LDD gating governs settlement security; weighting governs light-client proof size.
 \end{abstract}
 
 %═══════════════════════════════════════════════════════════════════════
@@ -291,6 +291,29 @@ At $\delta = 1$: $\threshold(1)^\alpha \approx (f_A/\gamma)^\alpha$. At $\delta 
 Additionally, slot-gap gating reduces the adversary's super-level multiplier: $M(1) = 1 + (L-1) \cdot s(1) \approx 1$ (since $s(1) = 1/\gamma \approx 0.07$), while the honest multiplier $M(\bar{\delta}) = 1 + (L-1) \cdot s(\bar{\delta})$ is substantially higher. The combined weight ratio exceeds $\bar{\delta}^\alpha$. \qed
 \end{proof}
 
+\subsection{Separation of Security Properties}
+\label{sec:separation}
+
+The preceding analysis establishes two distinct security mechanisms that are \emph{independent and serve different purposes}:
+
+\paragraph{LDD gating asymmetry $\to$ consistency bound.}
+The slot-gap gating function $s(\delta) = \min(1, \delta/\gamma)$ in the eligibility criterion creates an asymmetry between honest and adversarial block production. Honest blocks, produced at the natural LDD stationary distribution (mean gap $\bar\delta \approx 5.2$ for the L0 snowplow), receive a gating factor of $s(\bar\delta) \approx 0.35$. An adversary operating at the network-delay boundary ($\Delta = 0$, gap $\delta = 1$) receives $s(1) = 1/\gamma \approx 0.07$---a $5\times$ reduction. This \emph{election-level asymmetry} directly improves the consistency bound by approximately 20\% over static-threshold PoS, approaching the PoW bound under optimal weighting (see \Cref{fig:gating_asymmetry}).
+
+This improvement is a property of the \emph{LDD threshold function}, not of the weight function. Setting $w(B) = 1$ (block count) preserves the consistency bound improvement.
+
+\paragraph{Cumulative weighting $\to$ NIPoPoW light client proofs.}
+The cumulative chain weight $W(C) = \sum_{B \in C} \varphi(\delta_B)^\alpha$ aggregates a difficulty-like score across all blocks, analogous to Bitcoin's total work. This is what enables NIPoPoW-style superblock proofs: the weight function defines the ``difficulty'' of each block, which anchors the probabilistic sampling in the light client protocol. Without a weight function (or with uniform $w=1$), there is no notion of a block of greater difficulty to sample.
+
+\paragraph{Tension with grinding resistance.}
+A grinding adversary (nothing-at-stake, extending all competing branches simultaneously) can exploit gap-based weight functions. Branches not visited for $k$ slots accumulate a ``weight debt'' proportional to $k/\bar\delta$. When the adversary eventually extends such a branch, it earns disproportionately high weight despite no additional stake expenditure. Simulation confirms this: ramp weight $w(g) = g/\bar\delta$ \emph{reduces} settlement security, collapsing at 10\% adversary stake compared to 30\% for plain LDD (see \Cref{fig:grinding_comparison}).
+
+The resolution is that the two security properties operate in different threat models:
+\begin{itemize}
+    \item \textbf{Single-chain consistency} (an adversary building one competing chain): weighting and gating both help.
+    \item \textbf{Grinding resistance} (nothing-at-stake, branch proliferation): weighting hurts; LDD gating of the \emph{election function} is the correct defense.
+\end{itemize}
+In practice, the LDD gating's 20\% consistency improvement is sufficient for the NIPoPoW application---the light client protocol's security depends on superblock density ratios, not on grinding resistance per se.
+
 \subsection{Slot-Gap Gating Security}
 
 \begin{theorem}[Super-Level Suppression]
@@ -376,6 +399,30 @@ Honest-like (gap 5--9) & 19.2 & 0.7$\times$ & 32.3 & 0.9$\times$ \\
 \label{tab:results}
 \end{table}
 
+\subsection{Consistency Bound Analysis}
+\label{sec:consistency}
+
+\Cref{fig:gating_asymmetry} illustrates the mechanism behind the consistency bound improvement. The LDD snowplow creates a $5\times$ gating asymmetry between honest blocks (mean gap $\approx 5.2$, gating $\approx 0.35$) and adversarial blocks at the network-delay boundary (gap 1, gating $= 0.067$). This asymmetry in the \emph{election function} directly reduces the adversary's effective stake at the consistency boundary.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\textwidth]{figures/gating_asymmetry.pdf}
+    \caption{\textbf{LDD gating asymmetry: the source of consistency improvement.}
+    \emph{(a)}~The LDD snowplow threshold curve. Honest blocks (shaded blue band, mean gap $\approx 5.2$) land in the ramp zone; an adversary attempting to maximize block production (gap $\delta = 1$, red) is at the bottom of the ramp. \emph{(b)}~The gating factor $s(\delta) = \min(1, \delta/\gamma)$ for honest vs adversary production. The $5\times$ asymmetry in gating factor translates directly into a $\sim$20\% improvement in the consistency bound, independent of the weight function.}
+    \label{fig:gating_asymmetry}
+\end{figure}
+
+\Cref{fig:grinding_comparison} shows the grinding adversary simulation. The ramp weight function $w(g) = g/\bar\delta$---while theoretically optimal for single-chain consistency---actively degrades settlement security against a nothing-at-stake grinding adversary. Plain LDD (block-count chain selection) provides substantially better grinding resistance. This confirms the separation: use LDD gating for settlement security, use weighting only for the NIPoPoW light-client proof structure.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\textwidth]{figures/weight_grinding_intuition.pdf}
+    \caption{\textbf{Weighting and grinding resistance.}
+    \emph{(a)}~Intuition for why ramp weighting hurts: an adversary's dormant branch earns high weight (proportional to gap since last visit) when extended, regardless of whether that branch was honestly contested. The LDD election function itself provides the grinding defense---any additional gap-based reward undermines it.
+    \emph{(b)}~Settlement violation probability vs.\ adversary stake for three schemes (200-fork grinding simulation). Static PoS collapses at $\approx$35\%, Taktikos LDD plain collapses at $\approx$30\%, while Taktikos LDD + ramp weight collapses at 10\%. Ramp weighting is counterproductive against grinding adversaries.}
+    \label{fig:grinding_comparison}
+\end{figure}
+
 \subsection{Dependence on LDD: Comparison Across L0 Threshold Functions}
 \label{sec:l0comparison}
 
@@ -454,7 +501,12 @@ For a chain of $N_0 \approx 1.43$M base blocks (10M slots at approximately 14.3\
 
 \paragraph{Independence vs.\ nesting.} This construction produces \emph{independent} level assignments (a block may hit L3 without hitting L1), unlike PoW where $\mu$-superblock status implies $(\mu-1)$-superblock status. Independence strengthens security by requiring the adversary to satisfy $L$ independent constraints simultaneously, and prevents a fortuitous high-level hit from automatically boosting all lower levels.
 
-\paragraph{Relationship to the Taktikos consistency bound.} The original Taktikos consistency bound has a known vulnerability at moderate slot gaps where the LDD curve's linear ramp provides insufficient discrimination. This weight construction addresses the vulnerability: it corresponds to the moderate-gap adversary (gap 4--7), where slot-gap gating provides the additional 23 percentage points of honest advantage that the LDD threshold alone cannot.
+\paragraph{Separation of consistency bound and grinding resistance.}
+The construction reveals a fundamental separation between two security properties. The LDD gating asymmetry improves the \emph{single-chain consistency bound}---the maximum adversary stake fraction $\beta$ below which honest chains grow faster---by approximately 20\% relative to static-threshold PoS. This improvement comes entirely from the election function shape and is independent of the weight function: even with uniform $w(B) = 1$, the gating asymmetry holds.
+
+Cumulative weighting serves a different purpose: it defines the ``difficulty'' of each block, enabling NIPoPoW-style light client proofs where a small sample of high-weight blocks certifies chain quality. Without a weight function, there is no block difficulty to anchor the probabilistic sampling.
+
+However, these two mechanisms are in tension against a grinding adversary. Gap-based weight functions reward dormant branches---exactly the attack surface exploited by nothing-at-stake adversaries. For settlement security in adversarial environments with grinding, the recommendation is: use LDD gating for the election function (providing the 20\% consistency improvement), and treat the weight function as a NIPoPoW engineering parameter rather than a settlement security parameter.
 
 \paragraph{Integration cost.} The construction requires: (1)~$L-1$ additional hash evaluations per base block (negligible), (2)~$48L$ bytes of header overhead for the subchain state vector, and (3)~replacement of length-based chain selection with weight-based selection. The weight function is deterministically computable from header data, requiring no additional state.
 
