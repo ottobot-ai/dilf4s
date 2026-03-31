@@ -1,132 +1,134 @@
 """
-Figure D: Weight vs Grinding Intuition
-Left: Timeline showing how ramp weight rewards adversary's dormant branches.
-Right: Pr[settlement violation] vs adversary stake for three schemes.
+Figure D: Weight vs Grinding Intuition  (revised with CI bands)
+Left:  Clean timeline – dormant branch attack intuition.
+Right: Pr[settlement violation] vs adversary stake, with 95% CI shading.
 """
 
+import json
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 import os
 
-# ── Grinding simulation data (hardcoded from simulation output) ──────────────
-adv_stake  = [0,  5, 10,   15,   20,   25,   30,   35,   40,   45,   50]
-p_static   = [0,  0,  0,    0, 0.01, 0.01, 0.045, 0.23, 0.78, 0.97, 0.945]
-p_ldd      = [0,  0,  0, 0.005, 0.015, 0.02, 0.52, 0.955, 0.85, 0.91, 1.0]
-p_ramp     = [0,  0, 0.325, 0.335, 0.695, 0.62, 0.855, 0.815, 0.95, 0.925, 0.995]
+# ── Load CI data ─────────────────────────────────────────────────────────────
+_ci_path = os.path.join(os.path.dirname(__file__), 'grinding_results_ci.json')
+with open(_ci_path) as _f:
+    _ci = json.load(_f)
 
-mean_gap = 5.2   # honest mean slot gap
+stakes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 
-# ── Figure ───────────────────────────────────────────────────────────────────
+def _extract(scheme_key):
+    d = _ci[scheme_key]
+    means = [d[str(s)]["mean"] for s in stakes]
+    ci95  = [d[str(s)]["ci95"] for s in stakes]
+    return np.array(means), np.array(ci95)
+
+mean_A, ci_A = _extract("A")
+mean_B, ci_B = _extract("B")
+mean_C, ci_C = _extract("C")
+
+mean_gap = 5.201   # from simulation output
+
+# ── Figure layout ─────────────────────────────────────────────────────────────
 fig = plt.figure(figsize=(13, 5.5))
 gs  = GridSpec(1, 2, figure=fig, wspace=0.38)
 
-# ═══════════════════════════════════════════════════════
-# Left panel: Timeline intuition diagram
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+# Panel (a): Clean timeline – dormant branch attack intuition
+# ═══════════════════════════════════════════════════════════════════════════════
 ax1 = fig.add_subplot(gs[0])
-ax1.set_xlim(0, 25)
-ax1.set_ylim(-1, 3.5)
+ax1.set_xlim(-1.5, 24)
+ax1.set_ylim(-1.6, 3.2)
 ax1.axis('off')
-ax1.set_title('(a) Why Ramp Weighting Hurts: Dormant Branch Attack',
+ax1.set_title('(a) Dormant Branch Attack: Why Ramp Weight Backfires',
               fontsize=11, fontweight='bold', pad=8)
 
-# Slot timeline
+Y_HON = 1.8   # y-position of honest chain
+Y_ADV = 0.3   # y-position of adversary chain
+
+# ── Slot timelines ────────────────────────────────────────────────────────────
 t_max = 22
-ax1.annotate('', xy=(t_max, 2.2), xytext=(0, 2.2),
-             arrowprops=dict(arrowstyle='->', color='gray', lw=1.5))
-ax1.text(t_max + 0.2, 2.2, 'slots', fontsize=9, va='center', color='gray')
-ax1.text(0, 2.5, 'Time', fontsize=9, color='gray')
+ax1.annotate('', xy=(t_max + 0.5, Y_HON), xytext=(-0.5, Y_HON),
+             arrowprops=dict(arrowstyle='->', color='gray', lw=1.2))
+ax1.annotate('', xy=(t_max + 0.5, Y_ADV), xytext=(-0.5, Y_ADV),
+             arrowprops=dict(arrowstyle='->', color='gray', lw=1.2, linestyle='dashed'))
 
-# Honest chain blocks
-honest_slots = [2, 5, 8, 11, 15, 18]
+# ── Honest chain ─────────────────────────────────────────────────────────────
+honest_slots = [3, 6, 9, 12, 15, 18]
 for s in honest_slots:
-    ax1.plot(s, 2.2, 's', color='steelblue', ms=8, zorder=5)
-    w = s / mean_gap if s > 0 else 1.0
-    ax1.text(s, 2.55, f'w={min(w,3.5):.1f}', fontsize=7, ha='center', color='steelblue')
-ax1.text(-0.3, 2.2, 'Honest\nchain', fontsize=9, ha='right', va='center', color='steelblue')
+    ax1.plot(s, Y_HON, 's', color='steelblue', ms=9, zorder=5)
+    ax1.text(s, Y_HON + 0.35, r'$w{\approx}1$', fontsize=7.5,
+             ha='center', va='bottom', color='steelblue')
 
-# Adversary's main branch (visits at slots 2 and 22)
-adv_visit1 = 2
-adv_visit2 = 22
-gap_dormant = adv_visit2 - adv_visit1  # = 20 slots
-w_dormant   = gap_dormant / mean_gap   # ≈ 3.85
+ax1.text(-1.3, Y_HON, 'Honest', fontsize=9.5, ha='right', va='center',
+         color='steelblue', fontweight='bold')
 
-ax1.annotate('', xy=(t_max, 0.7), xytext=(0, 0.7),
-             arrowprops=dict(arrowstyle='->', color='salmon', lw=1.5, linestyle='dashed'))
-ax1.text(t_max + 0.2, 0.7, 'slots', fontsize=9, va='center', color='salmon')
+# ── Adversary chain: two blocks with big dormant gap ─────────────────────────
+adv1 = 3
+adv2 = 21   # 20-slot gap → w = 20/5.201 ≈ 3.85 ≈ 3.8
+w_adv2 = (adv2 - adv1) / mean_gap  # ≈ 3.84
 
-ax1.plot(adv_visit1, 0.7, 'D', color='firebrick', ms=8, zorder=5)
-ax1.text(adv_visit1, 1.1, f'w={adv_visit1/mean_gap:.1f}', fontsize=7, ha='center', color='firebrick')
+ax1.plot(adv1, Y_ADV, 'D', color='firebrick', ms=10, zorder=5)
+ax1.text(adv1, Y_ADV - 0.45, f'$w=0.6$', fontsize=7.5,
+         ha='center', va='top', color='firebrick')
 
-# Dormant zone shading
-ax1.axvspan(adv_visit1, adv_visit2, ymin=0.05, ymax=0.55, alpha=0.12, color='orange')
-ax1.annotate('', xy=(adv_visit2 - 0.3, 0.0), xytext=(adv_visit1 + 0.3, 0.0),
-             arrowprops=dict(arrowstyle='<->', color='darkorange', lw=2))
-ax1.text((adv_visit1 + adv_visit2) / 2, -0.35,
-         f'Dormant: {gap_dormant} slots', fontsize=9, ha='center', color='darkorange', fontweight='bold')
+ax1.plot(adv2, Y_ADV, 'D', color='firebrick', ms=10, zorder=5)
 
-ax1.plot(adv_visit2, 0.7, 'D', color='firebrick', ms=8, zorder=5)
-ax1.text(adv_visit2, 1.1, f'w={w_dormant:.1f}!', fontsize=8, ha='center',
+# Label near second block
+ax1.text(adv2 + 0.6, Y_ADV + 0.45,
+         f'20 slot gap $\\rightarrow$ $w={w_adv2:.1f}$',
+         fontsize=9, color='firebrick', fontweight='bold', va='bottom', ha='left')
+
+ax1.text(-1.3, Y_ADV, 'Adversary', fontsize=9.5, ha='right', va='center',
          color='firebrick', fontweight='bold')
 
-# Arrow highlighting the high weight
-ax1.annotate(f'Adversary earns\nw = {gap_dormant}/{mean_gap:.1f} ≈ {w_dormant:.1f}×\nfor "free"!',
-             xy=(adv_visit2, 0.7), xytext=(adv_visit2 - 7, -0.8),
-             fontsize=9, color='firebrick', fontweight='bold',
-             arrowprops=dict(arrowstyle='->', color='firebrick', lw=1.5))
+# ── Double-headed arrow for dormant gap ──────────────────────────────────────
+gap_y = Y_ADV - 0.85
+ax1.annotate('', xy=(adv2 - 0.2, gap_y), xytext=(adv1 + 0.2, gap_y),
+             arrowprops=dict(arrowstyle='<->', color='darkorange', lw=2.2))
+ax1.text((adv1 + adv2) / 2, gap_y - 0.35,
+         'Dormant: 20 slots', fontsize=9, ha='center', va='top',
+         color='darkorange', fontweight='bold')
 
-ax1.text(-0.3, 0.7, 'Adversary\nbranch', fontsize=9, ha='right', va='center', color='firebrick')
-
-ax1.text(12, 3.1,
-         'LDD gating governs WHO gets to produce;\n'
-         'ramp weight rewards HOW LONG since last visit.\n'
-         'These are orthogonal — and the latter helps the adversary.',
-         fontsize=8.5, ha='center', va='center', color='darkslategray',
-         bbox=dict(boxstyle='round,pad=0.4', facecolor='lightyellow', alpha=0.8, edgecolor='goldenrod'))
-
-# ═══════════════════════════════════════════════════════
-# Right panel: Settlement violation probability
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+# Panel (b): Settlement violation probability with CI bands
+# ═══════════════════════════════════════════════════════════════════════════════
 ax2 = fig.add_subplot(gs[1])
 
-ax2.plot(adv_stake, p_static, 'o-', color='steelblue',  lw=2, ms=7,
-         label='Static PoS (flat $f$, block count)', zorder=5)
-ax2.plot(adv_stake, p_ldd,    's-', color='darkorange', lw=2, ms=7,
-         label='Taktikos LDD (plain length)', zorder=5)
-ax2.plot(adv_stake, p_ramp,   '^-', color='firebrick',  lw=2, ms=7,
-         label='Taktikos LDD + ramp weight', zorder=5)
+colors  = ['steelblue', 'darkorange', 'firebrick']
+markers = ['o',          's',           '^']
+labels  = [
+    'Static PoS (flat $f$, block count)',
+    'Taktikos LDD (plain length)',
+    'Taktikos LDD + ramp weight',
+]
 
-# Collapse threshold lines
-for frac, color, label, yoff in [
-    (35, 'steelblue',  'Static PoS collapses\n$\\approx$35%', 0.15),
-    (30, 'darkorange', 'LDD plain collapses\n$\\approx$30%', 0.35),
-    (10, 'firebrick',  'LDD+ramp collapses\n$\\approx$10%', 0.55),
-]:
-    ax2.axvline(frac, color=color, lw=1.2, ls=':', alpha=0.7)
-    ax2.text(frac + 0.5, yoff, label, color=color, fontsize=7.5, va='bottom')
+for mean, ci, color, marker, label in zip(
+        [mean_A, mean_B, mean_C],
+        [ci_A,   ci_B,   ci_C],
+        colors, markers, labels):
+    ax2.plot(stakes, mean, f'{marker}-', color=color, lw=2, ms=7,
+             label=label, zorder=5)
+    ax2.fill_between(stakes, mean - ci, mean + ci,
+                     color=color, alpha=0.15, zorder=3)
 
-ax2.axhline(0.5, color='gray', lw=1, ls='--', alpha=0.5, label='50% violation threshold')
+ax2.axhline(0.5, color='gray', lw=1, ls='--', alpha=0.5,
+            label='50% violation threshold')
 
 ax2.set_xlabel('Adversary stake fraction (%)', fontsize=11)
 ax2.set_ylabel('Pr[settlement violation]', fontsize=11)
-ax2.set_title('(b) Settlement Security vs.\ Adversary Stake\n(200-fork grinding simulation)',
-              fontsize=11, fontweight='bold')
+ax2.set_title(r'(b) Settlement Security vs.\ Adversary Stake' + '\n'
+              '(50-fork grinding sim, $N=20$ trials, shading = 95% CI)',
+              fontsize=10.5, fontweight='bold')
 ax2.set_xlim(-1, 52)
 ax2.set_ylim(-0.05, 1.10)
 ax2.legend(fontsize=8.5, loc='upper left')
 ax2.grid(True, alpha=0.3)
 
-# Summary annotation
-ax2.text(0.97, 0.12,
-         'Ramp weighting is\ncounterproductive\nagainst grinding',
-         transform=ax2.transAxes, ha='right', va='bottom',
-         fontsize=9, color='firebrick', style='italic',
-         bbox=dict(boxstyle='round', facecolor='mistyrose', alpha=0.7, edgecolor='firebrick'))
-
 fig.suptitle('Weighting and Grinding Resistance',
-             fontsize=13, fontweight='bold', y=1.02)
+             fontsize=13, fontweight='bold', y=1.01)
 
 plt.tight_layout()
 

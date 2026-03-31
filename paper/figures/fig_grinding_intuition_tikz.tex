@@ -1,0 +1,47 @@
+% Honest vs adversary chain: dormant branch attack intuition
+% Requires: tikz, shapes.geometric (for diamond nodes)
+% Usage: \input{figures/fig_grinding_intuition_tikz.tex}
+%        or compile standalone with \documentclass{standalone}
+
+\begin{tikzpicture}[
+  block/.style={draw, fill=#1, minimum size=6pt, inner sep=0},
+  scale=0.85,
+  every node/.style={font=\small}
+]
+
+%% ── Honest chain (top row) ──────────────────────────────────────────────────
+\draw[gray, ->] (0,1) -- (11.8,1) node[right, gray] {\tiny slots};
+
+\foreach \x in {1, 2.5, 4, 5.5, 7, 8.5} {
+  \node[block=steelblue!70, rectangle] at (\x,1) {};
+  \node[above, blue!70!black, font=\tiny] at (\x,1.22) {$w{\approx}1$};
+}
+\node[left, blue!70!black, font=\small\bfseries] at (-0.1,1) {Honest};
+
+%% ── Adversary chain (bottom row) ────────────────────────────────────────────
+\draw[gray, dashed, ->] (0,0) -- (11.8,0) node[right, gray] {\tiny slots};
+
+% First adversary block (slot ~1, small gap → low weight)
+\node[draw, fill=red!70, diamond, shape aspect=1.5, minimum size=7pt,
+      inner sep=0] at (1,0) {};
+\node[below, red!80!black, font=\tiny] at (1,-0.18) {$w{=}0.6$};
+
+%% Dormant gap annotation
+\draw[<->, orange, thick] (1.18,-0.52) -- (9.82,-0.52);
+\node[below, orange, font=\small\bfseries] at (5.5,-0.72)
+  {Dormant: 20 slots};
+
+% Second adversary block (slot ~10, 20-slot gap → high weight)
+\node[draw, fill=red!70, diamond, shape aspect=1.5, minimum size=7pt,
+      inner sep=0] at (10,0) {};
+\node[below, red!80!black, font=\tiny] at (10,-0.18) {$w{=}3.8$};
+
+% "Free weight!" callout
+\node[above right, red!80!black, font=\small\bfseries] at (10.15,0.08)
+  {\textbf{Free weight!}};
+\draw[->, red!80!black, thick, shorten >=2pt]
+  (10.2,0.08) -- (10.0,0.28);
+
+\node[left, red!80!black, font=\small\bfseries] at (-0.1,0) {Adversary};
+
+\end{tikzpicture}
