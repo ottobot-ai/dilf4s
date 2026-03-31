@@ -225,19 +225,35 @@ def fig3_density():
 
 def fig4_cumulative_weight():
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    
-    # Left: Single race trace
-    rng = np.random.RandomState(7)
-    _, _, h_trace, a_trace = simulate_race(200, 7.0, [1,1,1,2,2,3], 2.0, True, rng)
-    
-    blocks = range(1, 201)
-    ax1.plot(blocks, h_trace, color='steelblue', linewidth=2, label='Honest (gap ~ 7)')
-    ax1.plot(blocks, a_trace, color='coral', linewidth=2, label='Adversary (burst, gap 1–2)')
-    ax1.fill_between(blocks, h_trace, a_trace, alpha=0.15, color='green')
+
+    # Left: 500-race ensemble — median + 10th/90th percentile band
+    N_RACES = 500
+    RACE_LEN = 200
+    h_all = np.zeros((N_RACES, RACE_LEN))
+    a_all = np.zeros((N_RACES, RACE_LEN))
+    for i in range(N_RACES):
+        rng_i = np.random.RandomState(i)
+        _, _, h_trace, a_trace = simulate_race(RACE_LEN, 7.0, [1,1,1,2,2,3], 2.0, True, rng_i)
+        h_all[i] = h_trace
+        a_all[i] = a_trace
+
+    blocks = np.arange(1, RACE_LEN + 1)
+    h_med = np.median(h_all, axis=0)
+    h_lo  = np.percentile(h_all, 10, axis=0)
+    h_hi  = np.percentile(h_all, 90, axis=0)
+    a_med = np.median(a_all, axis=0)
+    a_lo  = np.percentile(a_all, 10, axis=0)
+    a_hi  = np.percentile(a_all, 90, axis=0)
+
+    ax1.plot(blocks, h_med, color='steelblue', linewidth=2, label='Honest (gap ~ 7) — median')
+    ax1.fill_between(blocks, h_lo, h_hi, color='steelblue', alpha=0.2, label='Honest 10–90th pct')
+    ax1.plot(blocks, a_med, color='coral', linewidth=2, label='Adversary (burst, gap 1–2) — median')
+    ax1.fill_between(blocks, a_lo, a_hi, color='coral', alpha=0.2, label='Adversary 10–90th pct')
+    ax1.fill_between(blocks, h_med, a_med, alpha=0.12, color='green')
     ax1.set_xlabel('Block number')
     ax1.set_ylabel('Cumulative chain weight')
-    ax1.set_title('(a) Single Fork Race (α = 2)')
-    ax1.legend()
+    ax1.set_title(f'(a) Fork Race Ensemble (α = 2, n={N_RACES})')
+    ax1.legend(fontsize=8)
     ax1.grid(True, alpha=0.3)
     
     # Right: Per-block weight distributions (10k blocks)

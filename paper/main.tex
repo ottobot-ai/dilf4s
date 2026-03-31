@@ -375,7 +375,7 @@ Evaluation is performed through Monte Carlo fork races. Each race: an honest cha
 \begin{figure}[t]
     \centering
     \includegraphics[width=\textwidth]{figures/fig4_cumweight.pdf}
-    \caption{\textbf{Cumulative weight analysis.} \emph{(a)}~A single 200-block fork race. The honest chain (blue) steadily outpaces the burst adversary (red). The green fill shows the growing weight gap. Honest finishes at approximately $10\times$ the adversary's cumulative weight. \emph{(b)}~Per-block weight distributions over 10{,}000 blocks. Honest blocks (blue) cluster around a higher mean, while adversary burst blocks (red) cluster near zero. The distributions have minimal overlap, meaning weight-based chain selection provides strong discrimination.}
+    \caption{\textbf{Cumulative weight analysis.} \emph{(a)}~Ensemble of 500 independent 200-block fork races. Solid lines show the median cumulative weight; shaded bands show the 10th--90th percentile range. The honest chain (blue) consistently outpaces the burst adversary (red) with tight variance---the green fill between medians shows the growing weight gap. Honest chains finish at approximately $10\times$ the adversary's cumulative weight across all runs. \emph{(b)}~Per-block weight distributions over 10{,}000 blocks. Honest blocks (blue) cluster around a higher mean, while adversary burst blocks (red) cluster near zero. The distributions have minimal overlap, meaning weight-based chain selection provides strong discrimination.}
     \label{fig:cumweight}
 \end{figure}
 
